@@ -184,10 +184,32 @@ urlpatterns = [
 可用接口：
 
 - `/ip-guard/`：Dashboard 页面
-- `/ip-guard/api/dashboard/`：运营统计
+- `/ip-guard/api/dashboard/`：运营统计（含 24h 拦截率、决策分布、按小时趋势、热门路径、拦截原因 Top 等）
 - `/ip-guard/api/policy/`：策略读取/更新（GET/POST）
-- `/ip-guard/api/unban/`：手动解封（POST）
-- `/ip-guard/api/health/`：健康状态
+- `/ip-guard/api/ban/`、`/ip-guard/api/unban/`、`/ip-guard/api/ban-list/`：封禁与分页列表（支持 `q`、`active`、`source`）
+- `/ip-guard/api/access-logs/`：审计分页（支持 `decision`、`country`、`path`、`q`、`start`/`end` 日期 `YYYY-MM-DD`）
+- `/ip-guard/api/access-logs/export/`：按相同筛选条件导出 CSV（最多 1 万条，需 staff 登录态）
+- `/ip-guard/api/health/`：健康状态（含 Redis 延迟、Provider 熔断失败计数）
+
+## 3.7 Vue3 控制台接入
+
+前端目录：`frontend-admin/`  
+技术栈：Vue3 + Vite + Element Plus + Pinia + Axios
+
+启动命令：
+
+```bash
+cd frontend-admin
+npm install
+npm run dev
+```
+
+联调约定：
+
+- Django：`http://127.0.0.1:8010`
+- Vue：`http://127.0.0.1:5173`
+- Vite 代理：`/ip-guard/*`、`/admin/*`
+- 鉴权：Django Session + CSRF（前端自动携带 `X-CSRFToken`）
 
 ---
 
@@ -276,6 +298,8 @@ urlpatterns = [
 - 管理接口建议放在内网或通过零信任网关访问。
 - 对策略更新接口启用最小权限控制（仅安全管理员角色）。
 - 建议定期执行策略回放与误拦复盘，形成安全运营闭环。
+- Vue 控制台与 Django API 必须同源或受信跨域，并启用 HTTPS。
+- 管理 API 必须通过 `staff/superuser` 权限校验与 CSRF 校验。
 
 ---
 
@@ -351,6 +375,9 @@ python -m twine upload dist/*
 - 路径级降级策略
 - 数据库审计写入开关
 - 单测与文档基础完善
+- Django 管理 API 企业化（统一响应、分页筛选、错误码）
+- Vue3 + Element Plus 企业控制台（登录、仪表盘多维度统计、完整策略表单含路径级 fail-open/close 与 DB 审计开关、封禁分页与来源筛选、审计分页/路径/日期/导出 CSV、健康详情）
+- Session/CSRF 鉴权联动与前后端联调验证
 
 下一步建议：
 

@@ -141,11 +141,13 @@ IP_GUARD_TRUSTED_PROXY_CIDRS = ("10.0.0.0/8",)
 ## 📊 Dashboard 与管理接口
 
 - `GET /ip-guard/`：企业管理面板入口
-- `GET /ip-guard/api/dashboard/`：24h 统计、Top 风险 IP、国家分布
+- `GET /ip-guard/api/dashboard/`：24h 统计、拦截率、决策分布、按小时趋势、Top 风险 IP、国家/路径/拦截原因分布
 - `GET /ip-guard/api/policy/`：读取当前策略
 - `POST /ip-guard/api/policy/`：更新策略
-- `POST /ip-guard/api/unban/`：手动解封 IP
-- `GET /ip-guard/api/health/`：Redis/Provider/策略中心健康摘要
+- `POST /ip-guard/api/ban/`、`POST /ip-guard/api/unban/`、`GET /ip-guard/api/ban-list/`：封禁管理与分页列表
+- `GET /ip-guard/api/access-logs/`：审计分页（路径、日期等筛选）
+- `GET /ip-guard/api/access-logs/export/`：审计 CSV 导出（与列表相同筛选，上限 1 万条）
+- `GET /ip-guard/api/health/`：Redis 连通与延迟、Provider、熔断失败计数、策略中心开关
 
 ## ✅ 企业上线检查清单
 
@@ -171,3 +173,35 @@ ruff check .
 
 - 企业完整指南：`docs/django-ip-guard-开发与发布指南.md`
 - 企业发布流程：`docs/django-ip-guard-开发与发布指南.md` 中 “PyPI 发布流程”
+
+## 🖥️ Vue3 企业控制台（Element Plus）
+
+新增目录：`frontend-admin/`，技术栈为 Vue3 + Vite + Element Plus + Pinia + Axios。
+
+### 本地启动
+
+```bash
+cd frontend-admin
+npm install
+npm run dev
+```
+
+默认地址：`http://127.0.0.1:5173`
+
+### 后端联调要求
+
+- Django 服务运行在 `http://127.0.0.1:8010`
+- 前端通过 Vite 代理访问 `/ip-guard/api/*`
+- 鉴权采用 Django Session + CSRF：
+  1. `GET /ip-guard/api/auth/csrf/`
+  2. `POST /ip-guard/api/auth/login/`
+  3. `GET /ip-guard/api/auth/me/`
+
+### 已实现页面
+
+- 登录页：`/login`
+- 仪表盘：`/dashboard`
+- 策略中心：`/policy`
+- 封禁管理：`/ban`
+- 审计日志：`/logs`
+- 健康状态：`/health`
