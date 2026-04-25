@@ -83,3 +83,14 @@ html.dark .app-layout .header {
 html.dark .app-layout .main-content {
   background: var(--ip-bg);
 }
+
+html.dark .clickable-table :deep(.el-table__row:hover) {
+  background: rgba(34, 197, 94, 0.08) !important;
+}
+
+html.dark .el-button.is-plain {
+  --el-button-bg-color: var(--ip-bg-card);
+  --el-button-border-color: var(--ip-border);
+  --el-button-hover-bg-color: var(--ip-bg-card-hover);
+  --el-button-hover-border-color: var(--el-color-primary);
+}

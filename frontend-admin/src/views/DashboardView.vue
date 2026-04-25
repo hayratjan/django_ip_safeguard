@@ -209,7 +209,7 @@ onMounted(load);
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--ip-text, #0f172a);
 }
 
 .stats-row {
@@ -226,11 +226,12 @@ onMounted(load);
   gap: 16px;
   padding: 20px 24px;
   border-radius: 12px;
-  background: #fff;
+  background: var(--ip-bg-card, #fff);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
   overflow: hidden;
+  border: 1px solid var(--ip-border, transparent);
 }
 
 .stat-card::before {
@@ -276,19 +277,19 @@ onMounted(load);
 }
 
 .stat-total .stat-icon {
-  background: #eff6ff;
+  background: rgba(59, 130, 246, 0.1);
   color: #3b82f6;
 }
 .stat-allow .stat-icon {
-  background: #f0fdf4;
+  background: rgba(34, 197, 94, 0.1);
   color: #22c55e;
 }
 .stat-block .stat-icon {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
 .stat-rate .stat-icon {
-  background: #fffbeb;
+  background: rgba(245, 158, 11, 0.1);
   color: #f59e0b;
 }
 
@@ -301,12 +302,12 @@ onMounted(load);
   font-size: 28px;
   font-weight: 700;
   line-height: 1.2;
-  color: #0f172a;
+  color: var(--ip-text, #0f172a);
 }
 
 .stat-label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--ip-text-secondary, #64748b);
   margin-top: 4px;
 }
 
@@ -315,10 +316,11 @@ onMounted(load);
 }
 
 .section-card {
-  background: #fff;
+  background: var(--ip-bg-card, #fff);
   border-radius: 12px;
   padding: 16px 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--ip-border, transparent);
 }
 
 .section-header {
@@ -332,7 +334,7 @@ onMounted(load);
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #334155;
+  color: var(--ip-text, #334155);
 }
 
 .clickable-table {

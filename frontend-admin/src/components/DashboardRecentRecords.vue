@@ -162,7 +162,7 @@ load();
 
 .toolbar-label {
   font-size: 13px;
-  color: #606266;
+  color: var(--ip-text-secondary, #606266);
 }
 
 .summary-row {
@@ -175,45 +175,46 @@ load();
   align-items: center;
   padding: 12px 8px;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--ip-bg-card-hover, #f8fafc);
   cursor: pointer;
   transition: background 0.2s;
+  border: 1px solid var(--ip-border, transparent);
 }
 
 .mini-stat:hover {
-  background: #e2e8f0;
+  background: var(--ip-border, #e2e8f0);
 }
 
 .mini-block {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.08);
 }
 .mini-block:hover {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .mini-allow {
-  background: #f0fdf4;
+  background: rgba(34, 197, 94, 0.08);
 }
 .mini-allow:hover {
-  background: #dcfce7;
+  background: rgba(34, 197, 94, 0.15);
 }
 
 .mini-ban {
-  background: #fffbeb;
+  background: rgba(245, 158, 11, 0.08);
 }
 .mini-ban:hover {
-  background: #fef3c7;
+  background: rgba(245, 158, 11, 0.15);
 }
 
 .mini-value {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--ip-text, #0f172a);
 }
 
 .mini-label {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ip-text-secondary, #64748b);
   margin-top: 2px;
 }
 
@@ -221,13 +222,13 @@ load();
   margin: 0 0 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #606266;
+  color: var(--ip-text-secondary, #606266);
 }
 
 .hint {
   margin: 0 0 8px;
   font-size: 12px;
-  color: #909399;
+  color: var(--ip-text-secondary, #909399);
   line-height: 1.5;
 }
 
