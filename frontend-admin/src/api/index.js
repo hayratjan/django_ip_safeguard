@@ -6,6 +6,7 @@ export const logoutApi = () => http.post("/auth/logout/");
 export const meApi = () => http.get("/auth/me/");
 
 export const dashboardApi = () => http.get("/dashboard/");
+export const recentRecordsApi = (params) => http.get("/recent-records/", { params });
 export const healthApi = () => http.get("/health/");
 
 export const getPolicyApi = () => http.get("/policy/");

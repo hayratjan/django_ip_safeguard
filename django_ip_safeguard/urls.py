@@ -13,6 +13,7 @@ from django_ip_safeguard.views import (
     login_view,
     logout_view,
     policy_view,
+    recent_records_view,
     unban_ip_view,
 )
 
@@ -25,6 +26,7 @@ urlpatterns = [
     path("api/auth/logout/", logout_view, name="auth_logout_api"),
     path("api/auth/me/", auth_me_view, name="auth_me_api"),
     path("api/dashboard/", dashboard_api_view, name="dashboard_api"),
+    path("api/recent-records/", recent_records_view, name="recent_records_api"),
     path("api/policy/", policy_view, name="policy_api"),
     path("api/ban/", ban_ip_view, name="ban_ip_api"),
     path("api/unban/", unban_ip_view, name="unban_ip_api"),

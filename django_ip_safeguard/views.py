@@ -2,13 +2,14 @@ import csv
 import json
 import time
 from datetime import datetime, time as dt_time, timedelta
+from typing import Dict, Optional
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.db.models.functions import TruncHour
+from django.db.models.functions import TruncDate, TruncHour
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -74,6 +75,44 @@ def _apply_access_log_filters(request: HttpRequest, queryset):
     return queryset
 
 
+def _access_log_to_dict(item: IpAccessLog) -> dict:
+    """单条访问审计序列化（列表与近期接口复用）。"""
+
+    return {
+        "ip": item.ip,
+        "country_code": item.country_code,
+        "risk_score": item.risk_score,
+        "risk_tags": item.risk_tags,
+        "decision": item.decision,
+        "reason": item.reason,
+        "path": item.path,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def _ban_record_to_dict(item: IpBanRecord) -> dict:
+    """单条封禁记录序列化。"""
+
+    return {
+        "ip": item.ip,
+        "ban_reason": item.ban_reason,
+        "ban_source": item.ban_source,
+        "expired_at": item.expired_at.isoformat() if item.expired_at else None,
+        "is_active": item.is_active,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def _get_days_param(request: HttpRequest, default: int = 7, max_days: int = 30) -> int:
+    """查询参数 days，表示回溯自然日数。"""
+
+    try:
+        days = int(request.GET.get("days", default))
+    except (TypeError, ValueError):
+        days = default
+    return max(1, min(max_days, days))
+
+
 @staff_member_required
 @require_GET
 def dashboard_page_view(request: HttpRequest) -> HttpResponse:
@@ -87,6 +126,7 @@ def dashboard_page_view(request: HttpRequest) -> HttpResponse:
         <p>请通过以下接口查看数据：</p>
         <ul>
           <li>/api/dashboard/ - 统计指标</li>
+          <li>/api/recent-records/ - 近几日攻击与访问汇总</li>
           <li>/api/policy/ - 策略读取/更新</li>
           <li>/api/unban/ - 解封 IP（POST）</li>
           <li>/api/health/ - 健康状态</li>
@@ -292,17 +332,7 @@ def ban_list_view(request: HttpRequest) -> JsonResponse:
         queryset = queryset.filter(ban_source=source)
     paginator = Paginator(queryset, page_size)
     page_obj = paginator.get_page(page)
-    items = [
-        {
-            "ip": item.ip,
-            "ban_reason": item.ban_reason,
-            "ban_source": item.ban_source,
-            "expired_at": item.expired_at.isoformat() if item.expired_at else None,
-            "is_active": item.is_active,
-            "created_at": item.created_at.isoformat(),
-        }
-        for item in page_obj.object_list
-    ]
+    items = [_ban_record_to_dict(item) for item in page_obj.object_list]
     return api_success(
         {
             "items": items,
@@ -328,19 +358,7 @@ def access_log_list_view(request: HttpRequest) -> JsonResponse:
 
     paginator = Paginator(queryset, page_size)
     page_obj = paginator.get_page(page)
-    items = [
-        {
-            "ip": item.ip,
-            "country_code": item.country_code,
-            "risk_score": item.risk_score,
-            "risk_tags": item.risk_tags,
-            "decision": item.decision,
-            "reason": item.reason,
-            "path": item.path,
-            "created_at": item.created_at.isoformat(),
-        }
-        for item in page_obj.object_list
-    ]
+    items = [_access_log_to_dict(item) for item in page_obj.object_list]
     return api_success(
         {
             "items": items,
@@ -392,6 +410,68 @@ def access_log_export_view(request: HttpRequest) -> StreamingHttpResponse:
     response = StreamingHttpResponse(rows(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = 'attachment; filename="ip_guard_access_logs.csv"'
     return response
+
+
+@staff_member_required
+@require_GET
+def recent_records_view(request: HttpRequest) -> JsonResponse:
+    """近若干天的攻击（拦截）记录、全量访问记录、按日汇总与近期封禁。"""
+
+    days = _get_days_param(request, default=7, max_days=30)
+    attack_limit = _get_int_param(request, "attack_limit", 100, 1, 200)
+    access_limit = _get_int_param(request, "access_limit", 100, 1, 200)
+    ban_limit = _get_int_param(request, "ban_limit", 40, 1, 100)
+
+    since = timezone.now() - timedelta(days=days)
+    logs = IpAccessLog.objects.filter(created_at__gte=since)
+
+    def _count_by_date(qs, decision: Optional[str] = None) -> Dict[str, int]:
+        q = qs
+        if decision in {"allow", "block"}:
+            q = q.filter(decision=decision)
+        rows = q.annotate(d=TruncDate("created_at")).values("d").annotate(c=Count("id"))
+        out: Dict[str, int] = {}
+        for row in rows:
+            d = row["d"]
+            if d is None:
+                continue
+            out[d.isoformat()] = row["c"]
+        return out
+
+    block_by_date = _count_by_date(logs, "block")
+    allow_by_date = _count_by_date(logs, "allow")
+    all_dates = sorted(set(block_by_date.keys()) | set(allow_by_date.keys()))
+    daily_breakdown = [
+        {
+            "date": d,
+            "block": block_by_date.get(d, 0),
+            "allow": allow_by_date.get(d, 0),
+            "total": block_by_date.get(d, 0) + allow_by_date.get(d, 0),
+        }
+        for d in all_dates
+    ]
+
+    attack_qs = logs.filter(decision="block").order_by("-created_at")[:attack_limit]
+    access_qs = logs.order_by("-created_at")[:access_limit]
+    ban_window = IpBanRecord.objects.filter(created_at__gte=since)
+    ban_qs = ban_window.order_by("-created_at")[:ban_limit]
+
+    return api_success(
+        {
+            "days": days,
+            "since": since.isoformat(),
+            "summary": {
+                "total_access": logs.count(),
+                "total_blocks": logs.filter(decision="block").count(),
+                "total_allows": logs.filter(decision="allow").count(),
+                "total_ban_events": ban_window.count(),
+            },
+            "daily_breakdown": daily_breakdown,
+            "recent_attacks": [_access_log_to_dict(x) for x in attack_qs],
+            "recent_access": [_access_log_to_dict(x) for x in access_qs],
+            "recent_bans": [_ban_record_to_dict(x) for x in ban_qs],
+        }
+    )
 
 
 @staff_member_required

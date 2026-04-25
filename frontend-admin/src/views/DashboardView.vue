@@ -32,6 +32,12 @@
       </el-row>
       <el-row :gutter="12" style="margin-bottom: 16px">
         <el-col :span="24">
+          <h4 class="sub">近几日攻击与访问记录</h4>
+          <DashboardRecentRecords />
+        </el-col>
+      </el-row>
+      <el-row :gutter="12" style="margin-bottom: 16px">
+        <el-col :span="24">
           <h4 class="sub">国际来源可视化（24h，按国家/地区）</h4>
           <DashboardWorldIpMap :distribution="data.country_distribution || []" />
         </el-col>
@@ -75,6 +81,8 @@
 <script setup>
 import { computed, defineAsyncComponent, onMounted, ref } from "vue";
 import { dashboardApi } from "../api";
+
+import DashboardRecentRecords from "../components/DashboardRecentRecords.vue";
 
 const DashboardWorldIpMap = defineAsyncComponent(() => import("../components/DashboardWorldIpMap.vue"));
 

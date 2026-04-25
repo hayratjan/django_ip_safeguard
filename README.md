@@ -142,6 +142,7 @@ IP_GUARD_TRUSTED_PROXY_CIDRS = ("10.0.0.0/8",)
 
 - `GET /ip-guard/`：企业管理面板入口
 - `GET /ip-guard/api/dashboard/`：24h 统计、拦截率、决策分布、按小时趋势、Top 风险 IP、国家/路径/拦截原因分布
+- `GET /ip-guard/api/recent-records/`：近 `days` 天（1–30）访问/拦截按日汇总、最新拦截与访问记录、近期封禁（需开启审计写库才有数据）
 - `GET /ip-guard/api/policy/`：读取当前策略
 - `POST /ip-guard/api/policy/`：更新策略
 - `POST /ip-guard/api/ban/`、`POST /ip-guard/api/unban/`、`GET /ip-guard/api/ban-list/`：封禁管理与分页列表
