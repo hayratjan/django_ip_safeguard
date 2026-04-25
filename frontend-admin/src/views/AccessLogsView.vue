@@ -19,7 +19,7 @@
         end-placeholder="结束日期"
         style="width: 260px"
       />
-      <el-button @click="onSearch">查询</el-button>
+      <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button :loading="exporting" @click="onExport">导出 CSV</el-button>
     </el-space>
 
@@ -27,7 +27,13 @@
       <el-table-column prop="ip" label="IP" width="150" />
       <el-table-column prop="country_code" label="国家" width="90" />
       <el-table-column prop="risk_score" label="风险分" width="90" />
-      <el-table-column prop="decision" label="决策" width="90" />
+      <el-table-column prop="decision" label="决策" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.decision === 'block' ? 'danger' : 'success'" size="small" effect="plain">
+            {{ row.decision === 'block' ? '拦截' : '放行' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="reason" label="原因" show-overflow-tooltip />
       <el-table-column prop="path" label="路径" width="200" show-overflow-tooltip />
       <el-table-column prop="created_at" label="时间" width="190" />
@@ -46,10 +52,13 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { getAccessLogsApi } from "../api";
 import { downloadAccessLogsCsv } from "../api/export";
+
+const route = useRoute();
 
 const query = reactive({ q: "", country: "", decision: "", path: "" });
 const dateRange = ref(null);
@@ -60,7 +69,6 @@ const total = ref(0);
 const loading = ref(false);
 const exporting = ref(false);
 
-// 列表分页与导出共用筛选字段（导出不带 page，最多后端 1 万条）
 const filterParams = () => {
   const p = {
     q: query.q || undefined,
@@ -114,5 +122,23 @@ const onExport = async () => {
   }
 };
 
-onMounted(load);
+watch(
+  () => route.query,
+  (q) => {
+    if (q.q) query.q = q.q;
+    if (q.country) query.country = q.country;
+    if (q.decision) query.decision = q.decision;
+    if (q.path) query.path = q.path;
+    load();
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  const q = route.query;
+  if (q.q) query.q = q.q;
+  if (q.country) query.country = q.country;
+  if (q.decision) query.decision = q.decision;
+  if (q.path) query.path = q.path;
+});
 </script>

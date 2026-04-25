@@ -1,0 +1,392 @@
+# English translations for django-ip-safeguard.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: django-ip-safeguard\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-26 05:45+0800\n"
+"PO-Revision-Date: 2026-04-26 05:45+0800\n"
+"Last-Translator: \n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: apps.py
+msgid "IP安全卫士"
+msgstr "IP Safeguard"
+
+#: models.py
+msgid "策略名"
+msgstr "Policy Name"
+
+#: models.py
+msgid "启用防护"
+msgstr "Enable Protection"
+
+#: models.py
+msgid "风险阈值"
+msgstr "Risk Score Threshold"
+
+#: models.py
+msgid "风险标签黑名单"
+msgstr "Blocked Risk Tags"
+
+#: models.py
+msgid "国家白名单"
+msgstr "Allowed Countries"
+
+#: models.py
+msgid "国家黑名单"
+msgstr "Blocked Countries"
+
+#: models.py
+msgid "IP白名单"
+msgstr "IP Whitelist"
+
+#: models.py
+msgid "IP黑名单"
+msgstr "IP Blacklist"
+
+#: models.py
+msgid "单 IP 每分钟请求上限"
+msgstr "Rate Limit Per Minute (per IP)"
+
+#: models.py
+msgid "0 表示不启用；超过则直接拦截（不调用情报接口）"
+msgstr "0 means disabled; exceeding will block directly (without querying intel)"
+
+#: models.py
+msgid "全局失败放行"
+msgstr "Fail Open (Global)"
+
+#: models.py
+msgid "按路径失败放行"
+msgstr "Fail Open Path Prefixes"
+
+#: models.py
+msgid "按路径失败阻断"
+msgstr "Fail Close Path Prefixes"
+
+#: models.py
+msgid "拦截状态码"
+msgstr "Block Status Code"
+
+#: models.py
+msgid "情报缓存TTL"
+msgstr "Intel Cache TTL"
+
+#: models.py
+msgid "封禁TTL"
+msgstr "Ban TTL"
+
+#: models.py
+msgid "记录数据库审计"
+msgstr "Write DB Audit Log"
+
+#: models.py
+msgid "中国内网段池规则"
+msgstr "China Pool Rule"
+
+#: models.py
+msgid "off=不启用；allow_only_in_pool=仅允许命中中国内 CIDR 池；block_in_pool=命中中国内池则拦截"
+msgstr "off=disabled; allow_only_in_pool=only allow IPs in China CIDR pool; block_in_pool=block IPs in China pool"
+
+#: models.py
+msgid "国际网段池规则"
+msgstr "International Pool Rule"
+
+#: models.py
+msgid "off=不启用；allow_only_in_pool=仅允许命中国际 CIDR 池；block_in_pool=命中国际池则拦截"
+msgstr "off=disabled; allow_only_in_pool=only allow IPs in International CIDR pool; block_in_pool=block IPs in International pool"
+
+#: models.py
+msgid "更新时间"
+msgstr "Updated At"
+
+#: models.py
+msgid "IP防护策略"
+msgstr "IP Guard Policy"
+
+#: models.py
+msgid "池标识"
+msgstr "Pool Key"
+
+#: models.py
+msgid "数据源 URL"
+msgstr "Source URL"
+
+#: models.py
+msgid "原始行数"
+msgstr "Line Count"
+
+#: models.py
+msgid "IPv4 合并区间数"
+msgstr "IPv4 Interval Count"
+
+#: models.py
+msgid "IPv6 网段数"
+msgstr "IPv6 Network Count"
+
+#: models.py
+msgid "上次成功同步时间"
+msgstr "Last Successful Sync"
+
+#: models.py
+msgid "上次错误信息"
+msgstr "Last Error"
+
+#: models.py
+msgid "地理IP池同步状态"
+msgstr "Geo IP Pool Sync Status"
+
+#: models.py
+msgid "IP"
+msgstr "IP"
+
+#: models.py
+msgid "国家码"
+msgstr "Country Code"
+
+#: models.py
+msgid "风险分"
+msgstr "Risk Score"
+
+#: models.py
+msgid "风险标签"
+msgstr "Risk Tags"
+
+#: models.py
+msgid "决策"
+msgstr "Decision"
+
+#: models.py
+msgid "原因"
+msgstr "Reason"
+
+#: models.py
+msgid "请求路径"
+msgstr "Request Path"
+
+#: models.py
+msgid "创建时间"
+msgstr "Created At"
+
+#: models.py
+msgid "IP访问日志"
+msgstr "IP Access Log"
+
+#: models.py
+msgid "封禁原因"
+msgstr "Ban Reason"
+
+#: models.py
+msgid "封禁来源"
+msgstr "Ban Source"
+
+#: models.py
+msgid "过期时间"
+msgstr "Expired At"
+
+#: models.py
+msgid "是否生效"
+msgstr "Is Active"
+
+#: models.py
+msgid "IP封禁记录"
+msgstr "IP Ban Record"
+
+#: admin.py
+msgid "批量设为生效"
+msgstr "Mark selected as active"
+
+#: admin.py
+msgid "批量设为失效"
+msgstr "Mark selected as inactive"
+
+#: middleware.py
+#, python-format
+msgid "命中 IP 黑名单: %(rule)s"
+msgstr "Matched IP blacklist: %(rule)s"
+
+#: middleware.py
+msgid "访问被安全策略阻止"
+msgstr "Access blocked by security policy"
+
+#: middleware.py
+msgid "超过单 IP 每分钟请求上限"
+msgstr "Rate limit exceeded for this IP"
+
+#: middleware.py
+msgid "IP 已被封禁"
+msgstr "IP has been banned"
+
+#: middleware.py
+msgid "IP 风险服务暂不可用"
+msgstr "IP risk service temporarily unavailable"
+
+#: views.py
+#, python-format
+msgid "请求体过大，最大允许 %(size)s 字节"
+msgstr "Request body too large, max %(size)s bytes allowed"
+
+#: views.py
+msgid "未登录或登录已过期"
+msgstr "Not logged in or session expired"
+
+#: views.py
+msgid "权限不足"
+msgstr "Insufficient permissions"
+
+#: views.py
+msgid "权限不足：缺少操作权限"
+msgstr "Insufficient permissions: missing operation permission"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 仅支持两位国家码（如 CN/US）"
+msgstr "Field %(field)s only supports 2-letter country codes (e.g. CN/US)"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 存在非法 IP/CIDR: %(rule)s"
+msgstr "Field %(field)s contains invalid IP/CIDR: %(rule)s"
+
+#: views.py
+msgid "企业运营面板"
+msgstr "Enterprise Operations Dashboard"
+
+#: views.py
+msgid "请通过以下接口查看数据："
+msgstr "Please use the following APIs to view data:"
+
+#: views.py
+msgid "统计指标"
+msgstr "Statistics"
+
+#: views.py
+msgid "近几日攻击与访问汇总"
+msgstr "Recent Attack & Access Summary"
+
+#: views.py
+msgid "策略读取/更新"
+msgstr "Policy Read/Update"
+
+#: views.py
+msgid "中国内/国际 CIDR 池同步状态"
+msgstr "China/International CIDR Pool Sync Status"
+
+#: views.py
+msgid "手动同步 CIDR 池至 Redis"
+msgstr "Manually Sync CIDR Pools to Redis"
+
+#: views.py
+msgid "解封 IP"
+msgstr "Unban IP"
+
+#: views.py
+msgid "健康状态"
+msgstr "Health Status"
+
+#: views.py
+msgid "权限不足：缺少策略查看权限"
+msgstr "Insufficient permissions: missing policy view permission"
+
+#: views.py
+msgid "权限不足：缺少策略修改权限"
+msgstr "Insufficient permissions: missing policy change permission"
+
+#: views.py
+msgid "JSON 格式错误"
+msgstr "Invalid JSON format"
+
+#: views.py
+msgid "rate_limit_per_minute 必须为整数"
+msgstr "rate_limit_per_minute must be an integer"
+
+#: views.py
+msgid "rate_limit_per_minute 范围为 0～100000（0 表示关闭）"
+msgstr "rate_limit_per_minute must be between 0 and 100000 (0 means disabled)"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 必须为 JSON 数组"
+msgstr "Field %(field)s must be a JSON array"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 须为 off、allow_only_in_pool 或 block_in_pool"
+msgstr "Field %(field)s must be off, allow_only_in_pool, or block_in_pool"
+
+#: views.py
+msgid "策略已更新"
+msgstr "Policy updated"
+
+#: views.py
+msgid "ip 参数不能为空"
+msgstr "ip parameter is required"
+
+#: views.py
+msgid "解封成功"
+msgstr "Unbanned successfully"
+
+#: views.py
+msgid "封禁成功"
+msgstr "Banned successfully"
+
+#: views.py
+msgid "同步任务已执行"
+msgstr "Sync task executed"
+
+#: views.py
+msgid "用户名或密码不能为空"
+msgstr "Username and password are required"
+
+#: views.py
+msgid "用户名或密码错误"
+msgstr "Invalid username or password"
+
+#: views.py
+msgid "该账号无后台权限"
+msgstr "This account has no admin access"
+
+#: views.py
+msgid "登录成功"
+msgstr "Login successful"
+
+#: views.py
+msgid "JWT 登录成功"
+msgstr "JWT login successful"
+
+#: views.py
+msgid "refresh_token 不能为空"
+msgstr "refresh_token is required"
+
+#: views.py
+msgid "refresh_token 无效或已过期"
+msgstr "refresh_token is invalid or expired"
+
+#: views.py
+msgid "刷新成功"
+msgstr "Refreshed successfully"
+
+#: views.py
+msgid "已退出登录"
+msgstr "Logged out"
+
+#: views.py
+msgid "JWT 已退出（请客户端删除本地 token）"
+msgstr "JWT logged out (please delete local tokens on client)"
+
+#: views.py
+msgid "不支持的语言代码"
+msgstr "Unsupported language code"
+
+#: views.py
+msgid "语言已切换"
+msgstr "Language switched"

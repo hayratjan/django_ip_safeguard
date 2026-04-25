@@ -1,0 +1,290 @@
+# English translations for demo-site.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: demo-site\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-26 05:50+0800\n"
+"PO-Revision-Date: 2026-04-26 05:50+0800\n"
+"Last-Translator: \n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: django-unfold template translations
+msgid "Filters"
+msgstr "Filters"
+
+msgid "Apply Filters"
+msgstr "Apply Filters"
+
+msgid "Clear all filters"
+msgstr "Clear all filters"
+
+msgid "Reset filters"
+msgstr "Reset filters"
+
+msgid "This page yielded into no results. Create a new item or reset your filters."
+msgstr "This page yielded no results. Create a new item or reset your filters."
+
+msgid "Filter navigation items"
+msgstr "Filter navigation items"
+
+msgid "Go back"
+msgstr "Go back"
+
+#, python-format
+msgid "By %(filter_title)s"
+msgstr "By %(filter_title)s"
+
+msgid "No results found"
+msgstr "No results found"
+
+msgid "Create a new item"
+msgstr "Create a new item"
+
+msgid "Search"
+msgstr "Search"
+
+msgid "Submit"
+msgstr "Submit"
+
+msgid "Actions"
+msgstr "Actions"
+
+msgid "Delete selected"
+msgstr "Delete selected"
+
+msgid "Home"
+msgstr "Home"
+
+msgid "View"
+msgstr "View"
+
+msgid "Change"
+msgstr "Change"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Add"
+msgstr "Add"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Save and continue editing"
+msgstr "Save and continue editing"
+
+msgid "Save and add another"
+msgstr "Save and add another"
+
+msgid "Close"
+msgstr "Close"
+
+msgid "Back"
+msgstr "Back"
+
+msgid "Next"
+msgstr "Next"
+
+msgid "Previous"
+msgstr "Previous"
+
+msgid "Select"
+msgstr "Select"
+
+msgid "Select all"
+msgstr "Select all"
+
+msgid "Export"
+msgstr "Export"
+
+msgid "Import"
+msgstr "Import"
+
+msgid "Log in"
+msgstr "Log in"
+
+msgid "Log out"
+msgstr "Log out"
+
+msgid "Password"
+msgstr "Password"
+
+msgid "Username"
+msgstr "Username"
+
+msgid "Welcome"
+msgstr "Welcome"
+
+msgid "Site administration"
+msgstr "Site administration"
+
+msgid "Django administration"
+msgstr "Django administration"
+
+msgid "Recent actions"
+msgstr "Recent actions"
+
+msgid "Action"
+msgstr "Action"
+
+msgid "Date"
+msgstr "Date"
+
+msgid "Time"
+msgstr "Time"
+
+msgid "User"
+msgstr "User"
+
+msgid "IP Guard Dashboard"
+msgstr "IP Guard Dashboard"
+
+msgid "Show all"
+msgstr "Show all"
+
+msgid "My actions"
+msgstr "My actions"
+
+msgid "None available"
+msgstr "None available"
+
+msgid "Unknown"
+msgstr "Unknown"
+
+msgid "Added"
+msgstr "Added"
+
+msgid "Changed"
+msgstr "Changed"
+
+msgid "Deleted"
+msgstr "Deleted"
+
+msgid "and"
+msgstr "and"
+
+msgid "You don't have permission to view or edit anything."
+msgstr "You don't have permission to view or edit anything."
+
+msgid "Recent actions by me"
+msgstr "Recent actions by me"
+
+msgid "Available %s"
+msgstr "Available %s"
+
+msgid "Chosen %s"
+msgstr "Chosen %s"
+
+msgid "Remove"
+msgstr "Remove"
+
+msgid "Choose"
+msgstr "Choose"
+
+msgid "Choose all"
+msgstr "Choose all"
+
+msgid "Remove all"
+msgstr "Remove all"
+
+msgid "Currently"
+msgstr "Currently"
+
+msgid "Click to choose all %s at once."
+msgstr "Click to choose all %s at once."
+
+msgid "Choose items"
+msgstr "Choose items"
+
+msgid "Remove items"
+msgstr "Remove items"
+
+msgid "No items selected"
+msgstr "No items selected"
+
+msgid "Select your choice and click "
+msgstr "Select your choice and click "
+
+msgid "to move it"
+msgstr "to move it"
+
+msgid "Type some letters to narrow down the list"
+msgstr "Type some letters to narrow down the list"
+
+msgid "Filter"
+msgstr "Filter"
+
+msgid "Clear selection"
+msgstr "Clear selection"
+
+msgid "First page"
+msgstr "First page"
+
+msgid "Previous page"
+msgstr "Previous page"
+
+msgid "Next page"
+msgstr "Next page"
+
+msgid "Last page"
+msgstr "Last page"
+
+msgid "Page"
+msgstr "Page"
+
+msgid "of"
+msgstr "of"
+
+msgid "items"
+msgstr "items"
+
+msgid "total"
+msgstr "total"
+
+msgid "Are you sure?"
+msgstr "Are you sure?"
+
+msgid "Yes, I'm sure"
+msgstr "Yes, I'm sure"
+
+msgid "No, take me back"
+msgstr "No, take me back"
+
+msgid "Confirm deletion"
+msgstr "Confirm deletion"
+
+msgid "Delete?"
+msgstr "Delete?"
+
+msgid "By clicking \"Yes, I'm sure\", the following items will be deleted"
+msgstr "By clicking \"Yes, I'm sure\", the following items will be deleted"
+
+msgid "All related objects will also be deleted"
+msgstr "All related objects will also be deleted"
+
+msgid "Are you sure you want to delete the selected items?"
+msgstr "Are you sure you want to delete the selected items?"
+
+msgid "Delete selected %(verbose_name_plural)s"
+msgstr "Delete selected %(verbose_name_plural)s"
+
+msgid "View on site"
+msgstr "View on site"
+
+msgid "View name"
+msgstr "View name"
+
+msgid "History"
+msgstr "History"
+
+msgid "View on site %(name)s"
+msgstr "View on site %(name)s"

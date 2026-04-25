@@ -1,8 +1,8 @@
 import axios from "axios";
 import { ElMessage } from "element-plus";
 import router from "../router";
+import i18n from "../i18n";
 
-/** 浏览器本地存储的 JWT 键名 */
 export const JWT_ACCESS_KEY = "ip_guard_access_token";
 export const JWT_REFRESH_KEY = "ip_guard_refresh_token";
 
@@ -20,7 +20,6 @@ export function clearJwtTokens() {
   localStorage.removeItem(JWT_REFRESH_KEY);
 }
 
-/** 不走业务拦截器，仅用于刷新 token，避免循环依赖 */
 const rawApi = axios.create({
   baseURL: "/ip-guard/api",
   withCredentials: true,
@@ -43,6 +42,11 @@ http.interceptors.request.use((config) => {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const savedLang = localStorage.getItem("ip_guard_locale");
+  if (savedLang) {
+    config.headers = config.headers || {};
+    config.headers["Accept-Language"] = savedLang === "zh" ? "zh-hans" : "en";
+  }
   return config;
 });
 
@@ -64,11 +68,13 @@ async function tryRefreshAccessToken() {
   }
 }
 
+const t = i18n.global.t.bind(i18n.global);
+
 http.interceptors.response.use(
   (response) => {
     const payload = response.data || {};
     if (payload.code !== 0) {
-      ElMessage.error(payload.message || "请求失败");
+      ElMessage.error(payload.message || t("common.failed"));
       return Promise.reject(payload);
     }
     return payload.data;
@@ -81,22 +87,22 @@ http.interceptors.response.use(
       if (ok) {
         original.__jwtRetried = true;
         original.headers = original.headers || {};
-        const t = localStorage.getItem(JWT_ACCESS_KEY);
-        if (t) {
-          original.headers.Authorization = `Bearer ${t}`;
+        const tok = localStorage.getItem(JWT_ACCESS_KEY);
+        if (tok) {
+          original.headers.Authorization = `Bearer ${tok}`;
         }
         return http(original);
       }
     }
     if (status === 401) {
       clearJwtTokens();
-      ElMessage.warning("登录状态失效，请重新登录");
+      ElMessage.warning(t("auth.sessionExpired"));
       router.push("/login");
     } else if (status === 403) {
       const msg = error?.response?.data?.message;
-      ElMessage.error(msg || "没有权限访问该资源");
+      ElMessage.error(msg || t("auth.noPermission"));
     } else {
-      ElMessage.error(error?.response?.data?.message || "网络异常");
+      ElMessage.error(error?.response?.data?.message || t("auth.networkError"));
     }
     return Promise.reject(error);
   }

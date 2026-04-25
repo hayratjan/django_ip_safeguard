@@ -7,45 +7,60 @@
       <el-card class="login-card" shadow="never">
         <div class="login-brand">
           <img class="login-logo" :src="logoUrl" alt="Django IP Safeguard" width="72" height="72" />
-          <h1 class="login-title">IP Guard</h1>
-          <p class="login-sub">企业运营控制台 · 安全策略与审计</p>
+          <h1 class="login-title">{{ t('login.title') }}</h1>
+          <p class="login-sub">{{ t('login.subtitle') }}</p>
+        </div>
+
+        <div class="login-lang-row">
+          <el-dropdown trigger="click" @command="onLangChange">
+            <span class="lang-switch">
+              <el-icon><svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M512 64a448 448 0 1 0 448 448A448 448 0 0 0 512 64zm0 819.2a371.2 371.2 0 1 1 371.2-371.2A371.2 371.2 0 0 1 512 883.2z"/><path fill="currentColor" d="M510.4 179.2a339.2 339.2 0 0 0-281.6 150.4h563.2A339.2 339.2 0 0 0 510.4 179.2zM512 844.8a384 384 0 0 0 281.6-121.6H230.4A384 384 0 0 0 512 844.8zM196.8 460.8a371.2 371.2 0 0 0 0 102.4h630.4a371.2 371.2 0 0 0 0-102.4z"/></svg></el-icon>
+              <span class="lang-label">{{ currentLangLabel }}</span>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-for="lang in i18nStore.languages" :key="lang.code" :command="lang.code" :class="{ 'is-active': lang.code === i18nStore.currentLocale }">
+                  {{ lang.name }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
 
         <el-form :model="form" label-position="top" class="login-form" @submit.prevent="onLogin">
-          <el-form-item label="登录方式">
+          <el-form-item :label="t('login.loginMode')">
             <el-radio-group v-model="loginMode" size="large">
-              <el-radio-button label="session">Session</el-radio-button>
-              <el-radio-button label="jwt">JWT</el-radio-button>
+              <el-radio-button label="session">{{ t('login.sessionMode') }}</el-radio-button>
+              <el-radio-button label="jwt">{{ t('login.jwtMode') }}</el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="用户名">
+          <el-form-item :label="t('login.username')">
             <el-input
               v-model="form.username"
               size="large"
-              placeholder="请输入后台账号"
+              :placeholder="t('login.usernamePlaceholder')"
               clearable
               autocomplete="username"
             />
           </el-form-item>
-          <el-form-item label="密码">
+          <el-form-item :label="t('login.password')">
             <el-input
               v-model="form.password"
               type="password"
               size="large"
-              placeholder="请输入密码"
+              :placeholder="t('login.passwordPlaceholder')"
               show-password
               autocomplete="current-password"
               @keyup.enter="onLogin"
             />
           </el-form-item>
           <el-button type="primary" size="large" :loading="loading" class="login-btn" native-type="submit" @click="onLogin">
-            登录
+            {{ t('login.submit') }}
           </el-button>
         </el-form>
 
         <p class="login-foot">
-          需具备 Django <strong>Staff</strong> 权限与对应功能权限；<strong>Session</strong> 模式使用服务端会话与 CSRF；
-          <strong>JWT</strong> 模式在浏览器本地保存 access/refresh，请求头自动携带 Bearer。
+          {{ t('login.footNote') }}
         </p>
       </el-card>
     </div>
@@ -53,19 +68,31 @@
 </template>
 
 <script setup>
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
 import { clearJwtTokens, getCsrf, jwtLoginApi, loginApi, setJwtTokens } from "../api";
 import { useAuthStore } from "../stores/auth";
-// 与仓库根目录 assets 品牌一致
+import { useI18nStore } from "../stores/i18n";
 import logoUrl from "../../../assets/logo.svg?url";
 
+const { t } = useI18n();
 const router = useRouter();
 const store = useAuthStore();
+const i18nStore = useI18nStore();
 const loading = ref(false);
 const loginMode = ref("session");
 const form = reactive({ username: "", password: "" });
+
+const currentLangLabel = computed(() => {
+  const lang = i18nStore.languages.find((l) => l.code === i18nStore.currentLocale);
+  return lang ? lang.name : i18nStore.currentLocale;
+});
+
+const onLangChange = (locale) => {
+  i18nStore.switchLocale(locale);
+};
 
 const onLogin = async () => {
   loading.value = true;
@@ -80,7 +107,7 @@ const onLogin = async () => {
       await loginApi(form);
     }
     await store.fetchMe();
-    ElMessage.success("登录成功");
+    ElMessage.success(t('auth.loginSuccess'));
     router.push("/dashboard");
   } finally {
     loading.value = false;
@@ -167,6 +194,31 @@ const onLogin = async () => {
   line-height: 1.5;
 }
 
+.login-lang-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #606266;
+}
+.lang-switch:hover {
+  color: #409eff;
+}
+.lang-switch .el-icon {
+  width: 16px;
+  height: 16px;
+}
+.lang-label {
+  font-size: 13px;
+}
+
 .login-form :deep(.el-form-item__label) {
   font-weight: 500;
   color: #475569;
@@ -185,10 +237,5 @@ const onLogin = async () => {
   line-height: 1.6;
   color: #94a3b8;
   text-align: center;
-}
-
-.login-foot strong {
-  color: #0f766e;
-  font-weight: 600;
 }
 </style>

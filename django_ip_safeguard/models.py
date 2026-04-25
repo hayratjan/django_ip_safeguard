@@ -62,6 +62,15 @@ class IpAccessLog(models.Model):
 
     ip = models.GenericIPAddressField(_("IP"))
     country_code = models.CharField(_("国家码"), max_length=16, blank=True)
+    country_name = models.CharField(_("国家名"), max_length=64, blank=True, default="")
+    region = models.CharField(_("省份/地区"), max_length=64, blank=True, default="")
+    city = models.CharField(_("城市"), max_length=64, blank=True, default="")
+    asn = models.IntegerField(_("ASN编号"), null=True, blank=True)
+    asn_org = models.CharField(_("ASN组织"), max_length=128, blank=True, default="")
+    is_datacenter = models.BooleanField(_("数据中心IP"), default=False)
+    is_proxy = models.BooleanField(_("代理IP"), default=False)
+    is_vpn = models.BooleanField(_("VPN IP"), default=False)
+    is_tor = models.BooleanField(_("Tor出口"), default=False)
     risk_score = models.IntegerField(_("风险分"), default=0)
     risk_tags = models.JSONField(_("风险标签"), default=list, blank=True)
     decision = models.CharField(_("决策"), max_length=16, default="allow")
@@ -72,6 +81,13 @@ class IpAccessLog(models.Model):
     class Meta:
         verbose_name = _("IP访问日志")
         verbose_name_plural = _("IP访问日志")
+        indexes = [
+            models.Index(fields=["ip", "-created_at"], name="idx_ip_created"),
+            models.Index(fields=["country_code"], name="idx_country"),
+            models.Index(fields=["asn"], name="idx_asn"),
+            models.Index(fields=["is_datacenter"], name="idx_datacenter"),
+            models.Index(fields=["decision", "-created_at"], name="idx_decision_created"),
+        ]
 
 
 class IpBanRecord(models.Model):
@@ -86,3 +102,60 @@ class IpBanRecord(models.Model):
     class Meta:
         verbose_name = _("IP封禁记录")
         verbose_name_plural = _("IP封禁记录")
+
+
+class IpReputationHistory(models.Model):
+    """IP 信誉历史记录：记录 IP 的风险趋势变化。"""
+
+    ip = models.GenericIPAddressField(_("IP"), db_index=True)
+    country_code = models.CharField(_("国家码"), max_length=16, blank=True, default="")
+    asn = models.IntegerField(_("ASN编号"), null=True, blank=True)
+    risk_score = models.IntegerField(_("风险分"), default=0)
+    risk_tags = models.JSONField(_("风险标签"), default=list, blank=True)
+    is_datacenter = models.BooleanField(_("数据中心"), default=False)
+    is_proxy = models.BooleanField(_("代理"), default=False)
+    is_vpn = models.BooleanField(_("VPN"), default=False)
+    is_tor = models.BooleanField(_("Tor"), default=False)
+    block_count_1h = models.PositiveIntegerField(_("近1小时拦截次数"), default=0)
+    allow_count_1h = models.PositiveIntegerField(_("近1小时放行次数"), default=0)
+    block_count_24h = models.PositiveIntegerField(_("近24小时拦截次数"), default=0)
+    allow_count_24h = models.PositiveIntegerField(_("近24小时放行次数"), default=0)
+    trend = models.CharField(
+        _("趋势"),
+        max_length=16,
+        default="stable",
+        help_text=_("stable=稳定, rising=上升, declining=下降"),
+    )
+    source = models.CharField(_("数据来源"), max_length=32, default="auto")
+    created_at = models.DateTimeField(_("创建时间"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("IP信誉历史")
+        verbose_name_plural = _("IP信誉历史")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["ip", "-created_at"], name="idx_reputation_ip_created"),
+            models.Index(fields=["risk_score"], name="idx_reputation_risk"),
+            models.Index(fields=["trend"], name="idx_reputation_trend"),
+        ]
+
+
+class ThreatIntelFeedStatus(models.Model):
+    """威胁情报源同步状态。"""
+
+    feed_name = models.CharField(_("情报源名称"), max_length=64, unique=True, db_index=True)
+    feed_url = models.URLField(_("情报源URL"), max_length=512, blank=True)
+    feed_format = models.CharField(_("数据格式"), max_length=16, default="ip_list")
+    threat_type = models.CharField(_("威胁类型"), max_length=32, default="unknown")
+    auto_ban = models.BooleanField(_("自动封禁"), default=False)
+    entry_count = models.PositiveIntegerField(_("条目数"), default=0)
+    auto_ban_count = models.PositiveIntegerField(_("自动封禁数"), default=0)
+    last_ok_at = models.DateTimeField(_("上次成功同步时间"), null=True, blank=True)
+    last_error = models.TextField(_("上次错误信息"), blank=True)
+    enabled = models.BooleanField(_("启用"), default=True)
+    created_at = models.DateTimeField(_("创建时间"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("更新时间"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("威胁情报源状态")
+        verbose_name_plural = _("威胁情报源状态")

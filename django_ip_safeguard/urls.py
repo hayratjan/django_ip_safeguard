@@ -12,6 +12,8 @@ from django_ip_safeguard.views import (
     geo_pools_status_view,
     geo_pools_sync_view,
     health_view,
+    i18n_lang_list_view,
+    i18n_lang_switch_view,
     jwt_login_view,
     jwt_logout_view,
     jwt_refresh_view,
@@ -44,4 +46,6 @@ urlpatterns = [
     path("api/access-logs/", access_log_list_view, name="access_log_list_api"),
     path("api/access-logs/export/", access_log_export_view, name="access_log_export_api"),
     path("api/health/", health_view, name="health_api"),
+    path("api/i18n/languages/", i18n_lang_list_view, name="i18n_lang_list_api"),
+    path("api/i18n/switch/", i18n_lang_switch_view, name="i18n_lang_switch_api"),
 ]

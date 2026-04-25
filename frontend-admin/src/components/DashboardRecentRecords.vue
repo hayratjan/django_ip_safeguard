@@ -13,16 +13,28 @@
 
     <el-row v-if="summary" :gutter="12" class="summary-row">
       <el-col :span="6">
-        <el-statistic title="区间内访问总次数" :value="summary.total_access || 0" />
+        <div class="mini-stat" @click="goLogs()">
+          <span class="mini-value">{{ summary.total_access || 0 }}</span>
+          <span class="mini-label">访问总次数</span>
+        </div>
       </el-col>
       <el-col :span="6">
-        <el-statistic title="拦截（攻击）次数" :value="summary.total_blocks || 0" />
+        <div class="mini-stat mini-block" @click="goLogs('block')">
+          <span class="mini-value">{{ summary.total_blocks || 0 }}</span>
+          <span class="mini-label">拦截（攻击）次数</span>
+        </div>
       </el-col>
       <el-col :span="6">
-        <el-statistic title="放行次数" :value="summary.total_allows || 0" />
+        <div class="mini-stat mini-allow" @click="goLogs('allow')">
+          <span class="mini-value">{{ summary.total_allows || 0 }}</span>
+          <span class="mini-label">放行次数</span>
+        </div>
       </el-col>
       <el-col :span="6">
-        <el-statistic title="封禁事件数" :value="summary.total_ban_events || 0" />
+        <div class="mini-stat mini-ban" @click="goLogs()">
+          <span class="mini-value">{{ summary.total_ban_events || 0 }}</span>
+          <span class="mini-label">封禁事件数</span>
+        </div>
       </el-col>
     </el-row>
 
@@ -38,7 +50,7 @@
       <el-col :xs="24" :lg="12">
         <h4 class="sub">攻击 / 拦截记录（最新）</h4>
         <p class="hint">decision=block 的审计记录，反映策略命中与风险拦截。</p>
-        <el-table v-loading="loading" :data="recentAttacks" size="small" max-height="320">
+        <el-table v-loading="loading" :data="recentAttacks" size="small" max-height="320" class="clickable-table" @row-click="onAttackRowClick">
           <el-table-column prop="created_at" label="时间" width="168" />
           <el-table-column prop="ip" label="IP" width="130" />
           <el-table-column prop="country_code" label="国家" width="72" />
@@ -50,10 +62,16 @@
       <el-col :xs="24" :lg="12">
         <h4 class="sub">IP 访问记录（最新）</h4>
         <p class="hint">含放行与拦截的最近访问样本，完整检索请用「审计日志」页。</p>
-        <el-table v-loading="loading" :data="recentAccess" size="small" max-height="320">
+        <el-table v-loading="loading" :data="recentAccess" size="small" max-height="320" class="clickable-table" @row-click="onAccessRowClick">
           <el-table-column prop="created_at" label="时间" width="168" />
           <el-table-column prop="ip" label="IP" width="130" />
-          <el-table-column prop="decision" label="决策" width="72" />
+          <el-table-column prop="decision" label="决策" width="72">
+            <template #default="{ row }">
+              <el-tag :type="row.decision === 'block' ? 'danger' : 'success'" size="small" effect="plain">
+                {{ row.decision === 'block' ? '拦截' : '放行' }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="country_code" label="国家" width="72" />
           <el-table-column prop="risk_score" label="风险分" width="72" />
           <el-table-column prop="path" label="路径" min-width="100" show-overflow-tooltip />
@@ -62,13 +80,17 @@
     </el-row>
 
     <h4 class="sub" style="margin-top: 20px">近期封禁事件</h4>
-    <el-table v-loading="loading" :data="recentBans" size="small" max-height="200">
+    <el-table v-loading="loading" :data="recentBans" size="small" max-height="200" class="clickable-table" @row-click="onBanRowClick">
       <el-table-column prop="created_at" label="时间" width="168" />
       <el-table-column prop="ip" label="IP" width="130" />
       <el-table-column prop="ban_source" label="来源" width="90" />
       <el-table-column prop="ban_reason" label="原因" show-overflow-tooltip />
       <el-table-column prop="is_active" label="生效" width="72">
-        <template #default="{ row }">{{ row.is_active ? "是" : "否" }}</template>
+        <template #default="{ row }">
+          <el-tag :type="row.is_active ? 'danger' : 'info'" size="small" effect="plain">
+            {{ row.is_active ? "是" : "否" }}
+          </el-tag>
+        </template>
       </el-table-column>
     </el-table>
   </div>
@@ -76,7 +98,10 @@
 
 <script setup>
 import { ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { recentRecordsApi } from "../api";
+
+const router = useRouter();
 
 const days = ref(7);
 const loading = ref(false);
@@ -100,10 +125,25 @@ const load = async () => {
   }
 };
 
-watch(days, () => {
-  load();
-});
+const goLogs = (decision, extra = {}) => {
+  const query = { ...extra };
+  if (decision) query.decision = decision;
+  router.push({ path: "/logs", query });
+};
 
+const onAttackRowClick = (row) => {
+  goLogs("block", { q: row.ip });
+};
+
+const onAccessRowClick = (row) => {
+  goLogs(row.decision, { q: row.ip });
+};
+
+const onBanRowClick = (row) => {
+  goLogs("block", { q: row.ip });
+};
+
+watch(days, () => load());
 load();
 </script>
 
@@ -129,6 +169,54 @@ load();
   margin-bottom: 16px;
 }
 
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  border-radius: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.mini-stat:hover {
+  background: #e2e8f0;
+}
+
+.mini-block {
+  background: #fef2f2;
+}
+.mini-block:hover {
+  background: #fee2e2;
+}
+
+.mini-allow {
+  background: #f0fdf4;
+}
+.mini-allow:hover {
+  background: #dcfce7;
+}
+
+.mini-ban {
+  background: #fffbeb;
+}
+.mini-ban:hover {
+  background: #fef3c7;
+}
+
+.mini-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mini-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
 .sub {
   margin: 0 0 8px;
   font-size: 14px;
@@ -141,5 +229,13 @@ load();
   font-size: 12px;
   color: #909399;
   line-height: 1.5;
+}
+
+.clickable-table {
+  cursor: pointer;
+}
+
+.clickable-table :deep(.el-table__row:hover) {
+  background: #f0fdf4 !important;
 }
 </style>

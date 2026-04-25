@@ -25,3 +25,6 @@ export const banIpApi = (payload) => http.post("/ban/", payload);
 export const unbanIpApi = (payload) => http.post("/unban/", payload);
 
 export const getAccessLogsApi = (params) => http.get("/access-logs/", { params });
+
+export const i18nLangListApi = () => http.get("/i18n/languages/");
+export const i18nLangSwitchApi = (payload) => http.post("/i18n/switch/", payload);

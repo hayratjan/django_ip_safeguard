@@ -1,27 +1,29 @@
 <template>
   <div class="page-card">
-    <h3>健康状态</h3>
+    <h3>{{ t('health.title') }}</h3>
     <el-descriptions :column="1" border>
-      <el-descriptions-item label="服务">{{ data.service }}</el-descriptions-item>
+      <el-descriptions-item :label="t('health.service')">{{ data.service }}</el-descriptions-item>
       <el-descriptions-item label="Redis">
-        {{ data.redis_ok ? "正常" : "异常" }}
-        <span v-if="data.redis_ok" class="muted">（延迟约 {{ data.redis_latency_ms }} ms）</span>
+        {{ data.redis_ok ? t('health.normal') : t('health.abnormal') }}
+        <span v-if="data.redis_ok" class="muted">{{ t('health.latency', { ms: data.redis_latency_ms }) }}</span>
       </el-descriptions-item>
-      <el-descriptions-item label="Provider">{{ data.provider }}</el-descriptions-item>
-      <el-descriptions-item label="策略中心">{{ data.policy_center_enabled ? "开启" : "关闭" }}</el-descriptions-item>
-      <el-descriptions-item label="Provider 熔断累计失败次数">
+      <el-descriptions-item :label="t('health.provider')">{{ data.provider }}</el-descriptions-item>
+      <el-descriptions-item :label="t('health.policyCenter')">{{ data.policy_center_enabled ? t('health.on') : t('health.off') }}</el-descriptions-item>
+      <el-descriptions-item :label="t('health.circuitFailures')">
         {{ data.provider_circuit_failures ?? 0 }}
-        <span class="muted">（Redis 计数，连续失败触发熔断时使用）</span>
+        <span class="muted">{{ t('health.circuitHint') }}</span>
       </el-descriptions-item>
     </el-descriptions>
-    <el-button style="margin-top: 12px" :loading="loading" @click="load">刷新</el-button>
+    <el-button style="margin-top: 12px" :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { healthApi } from "../api";
 
+const { t } = useI18n();
 const data = ref({});
 const loading = ref(false);
 

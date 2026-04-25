@@ -1,35 +1,35 @@
 <template>
   <div class="page-card">
-    <h3>封禁管理</h3>
+    <h3>{{ t('ban.title') }}</h3>
     <el-space wrap style="margin-bottom: 12px">
-      <el-input v-model="query.q" placeholder="搜索 IP" style="width: 220px" clearable />
-      <el-select v-model="query.active" placeholder="状态" style="width: 120px" clearable>
-        <el-option label="全部" value="" />
-        <el-option label="生效" value="true" />
-        <el-option label="失效" value="false" />
+      <el-input v-model="query.q" :placeholder="t('ban.searchIp')" style="width: 220px" clearable />
+      <el-select v-model="query.active" :placeholder="t('ban.statusFilter')" style="width: 120px" clearable>
+        <el-option :label="t('common.all')" value="" />
+        <el-option :label="t('ban.activeStatus')" value="true" />
+        <el-option :label="t('ban.inactiveStatus')" value="false" />
       </el-select>
-      <el-input v-model="query.source" placeholder="来源 manual/rule…" style="width: 160px" clearable />
-      <el-button @click="onSearch">查询</el-button>
+      <el-input v-model="query.source" :placeholder="t('ban.sourceFilter')" style="width: 160px" clearable />
+      <el-button @click="onSearch">{{ t('common.query') }}</el-button>
     </el-space>
 
     <el-space wrap style="margin-bottom: 12px">
-      <el-input v-model="banForm.ip" placeholder="IP 地址" style="width: 220px" />
-      <el-input v-model="banForm.reason" placeholder="原因" style="width: 240px" />
+      <el-input v-model="banForm.ip" :placeholder="t('ban.ip')" style="width: 220px" />
+      <el-input v-model="banForm.reason" :placeholder="t('ban.reason')" style="width: 240px" />
       <el-input-number v-model="banForm.ttl" :min="60" />
-      <el-button type="danger" :loading="banning" @click="onBan">手动封禁</el-button>
+      <el-button type="danger" :loading="banning" @click="onBan">{{ t('ban.manualBan') }}</el-button>
     </el-space>
 
     <el-table v-loading="loading" :data="items" size="small">
       <el-table-column prop="ip" label="IP" width="160" />
-      <el-table-column prop="ban_reason" label="原因" show-overflow-tooltip />
-      <el-table-column prop="ban_source" label="来源" width="90" />
-      <el-table-column prop="is_active" label="状态" width="80">
-        <template #default="{ row }">{{ row.is_active ? "生效" : "失效" }}</template>
+      <el-table-column prop="ban_reason" :label="t('ban.banReason')" show-overflow-tooltip />
+      <el-table-column prop="ban_source" :label="t('ban.banSource')" width="90" />
+      <el-table-column prop="is_active" :label="t('common.status')" width="80">
+        <template #default="{ row }">{{ row.is_active ? t('common.active') : t('common.inactive') }}</template>
       </el-table-column>
-      <el-table-column prop="expired_at" label="过期时间" width="200" />
-      <el-table-column label="操作" width="100">
+      <el-table-column prop="expired_at" :label="t('ban.expiredAt')" width="200" />
+      <el-table-column :label="t('common.actions')" width="100">
         <template #default="{ row }">
-          <el-button link type="primary" :disabled="!row.is_active" @click="onUnban(row.ip)">解封</el-button>
+          <el-button link type="primary" :disabled="!row.is_active" @click="onUnban(row.ip)">{{ t('ban.unban') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -48,8 +48,11 @@
 
 <script setup>
 import { onMounted, reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { banIpApi, getBanListApi, unbanIpApi } from "../api";
+
+const { t } = useI18n();
 
 const query = reactive({ q: "", active: "", source: "" });
 const banForm = reactive({ ip: "", reason: "manual_ban", ttl: 86400 });
@@ -91,7 +94,7 @@ const onBan = async () => {
   banning.value = true;
   try {
     await banIpApi(banForm);
-    ElMessage.success("封禁成功");
+    ElMessage.success(t('ban.banSuccess'));
     await load();
   } finally {
     banning.value = false;
@@ -100,7 +103,7 @@ const onBan = async () => {
 
 const onUnban = async (ip) => {
   await unbanIpApi({ ip });
-  ElMessage.success("解封成功");
+  ElMessage.success(t('ban.unbanSuccess'));
   await load();
 };
 
