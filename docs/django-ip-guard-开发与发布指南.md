@@ -123,7 +123,7 @@ python manage.py sync_geo_ip_pools
 - `IP_GUARD_USE_DB_LOG`：是否写数据库审计日志，默认 `False`
 - `IP_GUARD_ENABLE_POLICY_CENTER`：是否启用数据库策略中心，默认 `True`
 - `IP_GUARD_POLICY_CACHE_SECONDS`：策略缓存秒数，默认 `30`
-- `IP_GUARD_IP_MASK_ENABLED`：审计日志 IP 脱敏开关，默认 `True`
+- `IP_GUARD_IP_MASK_ENABLED`：审计日志 IP 脱敏开关（API 返回时脱敏，数据库始终存储完整 IP），默认 `False`
 - `IP_GUARD_IP_MASK_KEEP_PREFIX`：审计日志 IP 脱敏保留段数，默认 `2`
 
 ## 3.2 Provider 配置
