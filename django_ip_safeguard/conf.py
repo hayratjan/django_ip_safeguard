@@ -35,7 +35,7 @@ class IpGuardSettings:
     use_db_log: bool = False
     enable_policy_center: bool = True
     policy_cache_seconds: int = 30
-    ip_mask_enabled: bool = True
+    ip_mask_enabled: bool = False
     ip_mask_keep_prefix: int = 2
     provider_circuit_breaker_failures: int = 5
     provider_circuit_breaker_ttl: int = 60
@@ -118,7 +118,7 @@ def get_settings() -> IpGuardSettings:
         use_db_log=getattr(settings, "IP_GUARD_USE_DB_LOG", False),
         enable_policy_center=getattr(settings, "IP_GUARD_ENABLE_POLICY_CENTER", True),
         policy_cache_seconds=int(getattr(settings, "IP_GUARD_POLICY_CACHE_SECONDS", 30)),
-        ip_mask_enabled=bool(getattr(settings, "IP_GUARD_IP_MASK_ENABLED", True)),
+        ip_mask_enabled=bool(getattr(settings, "IP_GUARD_IP_MASK_ENABLED", False)),
         ip_mask_keep_prefix=int(getattr(settings, "IP_GUARD_IP_MASK_KEEP_PREFIX", 2)),
         provider_circuit_breaker_failures=int(
             getattr(settings, "IP_GUARD_PROVIDER_CIRCUIT_BREAKER_FAILURES", 5)

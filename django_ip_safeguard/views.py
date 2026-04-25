@@ -21,6 +21,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from django_ip_safeguard.conf import get_settings
 from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy
+from django_ip_safeguard.services.audit_service import mask_ip
 from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.jwt_service import (
     get_user_from_access_token,
@@ -176,9 +177,9 @@ def _apply_access_log_filters(request: HttpRequest, queryset):
     return queryset
 
 
-def _access_log_to_dict(item: IpAccessLog) -> dict:
+def _access_log_to_dict(item: IpAccessLog, mask_enabled: bool = False, mask_keep_prefix: int = 2) -> dict:
     return {
-        "ip": item.ip,
+        "ip": mask_ip(item.ip, mask_enabled, mask_keep_prefix),
         "country_code": item.country_code,
         "risk_score": item.risk_score,
         "risk_tags": item.risk_tags,
@@ -246,6 +247,7 @@ def dashboard_page_view(request: HttpRequest) -> HttpResponse:
 @api_permission_required("django_ip_safeguard.view_ipaccesslog")
 @require_GET
 def dashboard_api_view(request: HttpRequest) -> JsonResponse:
+    cfg = get_settings()
     since = timezone.now() - timedelta(days=1)
     today_logs = IpAccessLog.objects.filter(created_at__gte=since)
     blocked_count = today_logs.filter(decision="block").count()
@@ -257,6 +259,8 @@ def dashboard_api_view(request: HttpRequest) -> JsonResponse:
         .annotate(count=Count("id"))
         .order_by("-count")[:10]
     )
+    for row in top_risk_ips:
+        row["ip"] = mask_ip(row["ip"], cfg.ip_mask_enabled, cfg.ip_mask_keep_prefix)
     country_distribution = list(
         today_logs.values("country_code").annotate(count=Count("id")).order_by("-count")[:10]
     )
@@ -506,9 +510,10 @@ def access_log_list_view(request: HttpRequest) -> JsonResponse:
     queryset = IpAccessLog.objects.all().order_by("-created_at")
     queryset = _apply_access_log_filters(request, queryset)
 
+    cfg = get_settings()
     paginator = Paginator(queryset, page_size)
     page_obj = paginator.get_page(page)
-    items = [_access_log_to_dict(item) for item in page_obj.object_list]
+    items = [_access_log_to_dict(item, mask_enabled=cfg.ip_mask_enabled, mask_keep_prefix=cfg.ip_mask_keep_prefix) for item in page_obj.object_list]
     return api_success(
         {
             "items": items,
@@ -534,6 +539,7 @@ def access_log_export_view(request: HttpRequest) -> StreamingHttpResponse:
     queryset = IpAccessLog.objects.all().order_by("-created_at")
     queryset = _apply_access_log_filters(request, queryset)[:10000]
 
+    cfg = get_settings()
     pseudo_buffer = _Echo()
 
     def rows():
@@ -543,7 +549,7 @@ def access_log_export_view(request: HttpRequest) -> StreamingHttpResponse:
         for item in queryset:
             yield writer.writerow(
                 [
-                    item.ip,
+                    mask_ip(item.ip, cfg.ip_mask_enabled, cfg.ip_mask_keep_prefix),
                     item.country_code,
                     item.risk_score,
                     json.dumps(item.risk_tags or [], ensure_ascii=False),
@@ -606,6 +612,7 @@ def recent_records_view(request: HttpRequest) -> JsonResponse:
     ban_window = IpBanRecord.objects.filter(created_at__gte=since)
     ban_qs = ban_window.order_by("-created_at")[:ban_limit]
 
+    cfg = get_settings()
     return api_success(
         {
             "days": days,
@@ -617,8 +624,8 @@ def recent_records_view(request: HttpRequest) -> JsonResponse:
                 "total_ban_events": ban_window.count(),
             },
             "daily_breakdown": daily_breakdown,
-            "recent_attacks": [_access_log_to_dict(x) for x in attack_qs],
-            "recent_access": [_access_log_to_dict(x) for x in access_qs],
+            "recent_attacks": [_access_log_to_dict(x, mask_enabled=cfg.ip_mask_enabled, mask_keep_prefix=cfg.ip_mask_keep_prefix) for x in attack_qs],
+            "recent_access": [_access_log_to_dict(x, mask_enabled=cfg.ip_mask_enabled, mask_keep_prefix=cfg.ip_mask_keep_prefix) for x in access_qs],
             "recent_bans": [_ban_record_to_dict(x) for x in ban_qs],
         }
     )
@@ -803,3 +810,34 @@ def logout_view(request: HttpRequest) -> JsonResponse:
 @csrf_protect
 def jwt_logout_view(_request: HttpRequest) -> JsonResponse:
     return api_success(message=_("JWT 已退出（请客户端删除本地 token）"))
+
+
+@require_GET
+def i18n_lang_list_view(request: HttpRequest) -> JsonResponse:
+    from django.conf import settings
+    languages = getattr(settings, "LANGUAGES", [("zh-hans", "简体中文"), ("en", "English")])
+    current = getattr(request, "LANGUAGE_CODE", "zh-hans")
+    return api_success({
+        "languages": [{"code": code, "name": name} for code, name in languages],
+        "current": current,
+    })
+
+
+@require_http_methods(["POST"])
+def i18n_lang_switch_view(request: HttpRequest) -> JsonResponse:
+    from django.conf import settings
+    from django.utils.translation import activate, get_language
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    lang_code = str(payload.get("language", "")).strip().lower()
+    supported = dict(getattr(settings, "LANGUAGES", {}))
+    if lang_code not in supported:
+        return api_error(_("不支持的语言代码"), code=4007, status=400)
+    activate(lang_code)
+    if hasattr(request, "session") and request.session.session_key:
+        request.session[settings.LANGUAGE_SESSION_KEY] = lang_code
+    response = api_success({"language": lang_code}, message=_("语言已切换"))
+    response.set_cookie(settings.LANGUAGE_COOKIE_NAME, lang_code, max_age=settings.LANGUAGE_COOKIE_AGE)
+    return response

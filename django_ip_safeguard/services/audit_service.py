@@ -16,16 +16,15 @@ def log_access_decision(
     ip_mask_enabled: bool = True,
     ip_mask_keep_prefix: int = 2,
 ) -> None:
-    """按开关记录访问决策到数据库。"""
+    """按开关记录访问决策到数据库。始终存储完整 IP，脱敏在展示层按配置执行。"""
 
     if not enabled:
         return
     try:
         from django_ip_safeguard.models import IpAccessLog
 
-        stored_ip = mask_ip(ip, ip_mask_enabled, ip_mask_keep_prefix)
         IpAccessLog.objects.create(
-            ip=stored_ip,
+            ip=ip,
             country_code=(ip_intel.country_code or "")[:16],
             risk_score=ip_intel.risk_score,
             risk_tags=ip_intel.risk_tags,
