@@ -75,7 +75,7 @@ import { useRouter } from "vue-router";
 import { clearJwtTokens, getCsrf, jwtLoginApi, loginApi, setJwtTokens } from "../api";
 import { useAuthStore } from "../stores/auth";
 import { useI18nStore } from "../stores/i18n";
-import logoUrl from "../../../assets/logo.svg?url";
+import logoUrl from "../assets/logo.svg?url";
 
 const { t } = useI18n();
 const router = useRouter();
