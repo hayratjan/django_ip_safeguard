@@ -146,11 +146,12 @@ IP_GUARD_TRUSTED_PROXY_CIDRS = ("10.0.0.0/8",)
 - `GET /ip-guard/api/dashboard/`：24h 统计、拦截率、决策分布、按小时趋势、Top 风险 IP、国家/路径/拦截原因分布
 - `GET /ip-guard/api/recent-records/`：近 `days` 天（1–30）访问/拦截按日汇总、最新拦截与访问记录、近期封禁（需开启审计写库才有数据）
 - `GET /ip-guard/api/policy/`：读取当前策略
-- `POST /ip-guard/api/policy/`：更新策略
+- `POST /ip-guard/api/policy/`：更新策略（支持 IP/CIDR 白黑名单与地区白黑名单；自动校验与去重）
 - `POST /ip-guard/api/ban/`、`POST /ip-guard/api/unban/`、`GET /ip-guard/api/ban-list/`：封禁管理与分页列表
 - `GET /ip-guard/api/access-logs/`：审计分页（路径、日期等筛选）
 - `GET /ip-guard/api/access-logs/export/`：审计 CSV 导出（与列表相同筛选，上限 1 万条）
 - `GET /ip-guard/api/health/`：Redis 连通与延迟、Provider、熔断失败计数、策略中心开关
+- JWT 配置：`IP_GUARD_JWT_SECRET_KEY`、`IP_GUARD_JWT_ALGORITHM`、`IP_GUARD_JWT_ACCESS_TTL`、`IP_GUARD_JWT_REFRESH_TTL`
 
 ## ✅ 企业上线检查清单
 
@@ -198,7 +199,14 @@ npm run dev
 - 鉴权采用 Django Session + CSRF：
   1. `GET /ip-guard/api/auth/csrf/`
   2. `POST /ip-guard/api/auth/login/`
-  3. `GET /ip-guard/api/auth/me/`
+  3. `GET /ip-guard/api/auth/me/`（返回 `groups` 与 `permissions`）
+- 所有管理 API 视图均显式启用 `csrf_protect`，写操作必须携带有效 `X-CSRFToken`。
+- 控制台基于 Django 用户与组权限显示菜单并限制访问：
+  - `django_ip_safeguard.view_ipaccesslog`：仪表盘/审计日志/近期记录
+  - `django_ip_safeguard.view_ipguardpolicy`：策略中心查看、健康状态
+  - `django_ip_safeguard.change_ipguardpolicy`：策略中心修改
+  - `django_ip_safeguard.view_ipbanrecord`：封禁列表查看
+  - `django_ip_safeguard.change_ipbanrecord`：手动封禁/解封
 
 ### 已实现页面
 

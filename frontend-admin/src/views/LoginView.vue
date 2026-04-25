@@ -12,6 +12,12 @@
         </div>
 
         <el-form :model="form" label-position="top" class="login-form" @submit.prevent="onLogin">
+          <el-form-item label="登录方式">
+            <el-radio-group v-model="loginMode" size="large">
+              <el-radio-button label="session">Session</el-radio-button>
+              <el-radio-button label="jwt">JWT</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
           <el-form-item label="用户名">
             <el-input
               v-model="form.username"
@@ -37,7 +43,10 @@
           </el-button>
         </el-form>
 
-        <p class="login-foot">需具备 Django <strong>Staff</strong> 权限；会话与 CSRF 由服务端校验。</p>
+        <p class="login-foot">
+          需具备 Django <strong>Staff</strong> 权限与对应功能权限；<strong>Session</strong> 模式使用服务端会话与 CSRF；
+          <strong>JWT</strong> 模式在浏览器本地保存 access/refresh，请求头自动携带 Bearer。
+        </p>
       </el-card>
     </div>
   </div>
@@ -47,7 +56,7 @@
 import { reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
-import { getCsrf, loginApi } from "../api";
+import { clearJwtTokens, getCsrf, jwtLoginApi, loginApi, setJwtTokens } from "../api";
 import { useAuthStore } from "../stores/auth";
 // 与仓库根目录 assets 品牌一致
 import logoUrl from "../../../assets/logo.svg?url";
@@ -55,13 +64,21 @@ import logoUrl from "../../../assets/logo.svg?url";
 const router = useRouter();
 const store = useAuthStore();
 const loading = ref(false);
+const loginMode = ref("session");
 const form = reactive({ username: "", password: "" });
 
 const onLogin = async () => {
   loading.value = true;
   try {
     await getCsrf();
-    await loginApi(form);
+    if (loginMode.value === "jwt") {
+      clearJwtTokens();
+      const tokens = await jwtLoginApi(form);
+      setJwtTokens(tokens.access_token, tokens.refresh_token);
+    } else {
+      clearJwtTokens();
+      await loginApi(form);
+    }
     await store.fetchMe();
     ElMessage.success("登录成功");
     router.push("/dashboard");

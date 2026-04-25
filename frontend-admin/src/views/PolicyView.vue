@@ -22,7 +22,7 @@
           filterable
           allow-create
           default-first-option
-          placeholder="如 CN"
+          placeholder="如 CN/US，仅支持两位国家码"
           style="width: 100%"
         />
       </el-form-item>
@@ -33,6 +33,7 @@
           filterable
           allow-create
           default-first-option
+          placeholder="如 RU/KP，仅支持两位国家码"
           style="width: 100%"
         />
       </el-form-item>
@@ -95,17 +96,19 @@
         <span class="hint">开启后拦截/放行会写库，流量大时请评估性能</span>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" :loading="saving" @click="onSave">保存策略</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!canEditPolicy" @click="onSave">保存策略</el-button>
         <el-button @click="reload">重新加载</el-button>
+        <span v-if="!canEditPolicy" class="hint">当前账号仅有查看权限，无法修改策略</span>
       </el-form-item>
     </el-form>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { getPolicyApi, updatePolicyApi } from "../api";
+import { useAuthStore } from "../stores/auth";
 
 // 与后端 IpGuardPolicy 字段对齐的默认值，避免控件读到 undefined
 const emptyForm = () => ({
@@ -128,6 +131,8 @@ const emptyForm = () => ({
 
 const form = reactive(emptyForm());
 const saving = ref(false);
+const authStore = useAuthStore();
+const canEditPolicy = computed(() => authStore.hasPerm("django_ip_safeguard.change_ipguardpolicy"));
 
 const reload = async () => {
   Object.assign(form, emptyForm(), await getPolicyApi());
@@ -138,6 +143,10 @@ onMounted(reload);
 const onSave = async () => {
   saving.value = true;
   try {
+    if (!canEditPolicy.value) {
+      ElMessage.warning("当前账号没有策略修改权限");
+      return;
+    }
     await updatePolicyApi({ ...form });
     ElMessage.success("策略已保存");
     await reload();

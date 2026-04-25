@@ -188,11 +188,14 @@ urlpatterns = [
 - `/ip-guard/`：Dashboard 页面
 - `/ip-guard/api/dashboard/`：运营统计（含 24h 拦截率、决策分布、按小时趋势、热门路径、拦截原因 Top 等）
 - `/ip-guard/api/recent-records/`：近若干天（`days`，默认 7、最大 30）攻击/拦截记录、IP 访问记录、按日放行与拦截汇总、近期封禁；可选 `attack_limit`、`access_limit`、`ban_limit`（默认 100、100、40，各自有上限）
-- `/ip-guard/api/policy/`：策略读取/更新（GET/POST，含 IP 白/黑名单、单 IP 每分钟请求上限等）
+- `/ip-guard/api/policy/`：策略读取/更新（GET/POST，含 IP 白/黑名单、地区白/黑名单、单 IP 每分钟请求上限等）
+  - 地区白/黑名单仅支持两位国家码（如 `CN`/`US`），写入时自动大写去重
+  - IP 白/黑名单支持单 IP 与 CIDR（如 `203.0.113.8`、`10.0.0.0/8`），写入时会规范化并去重
 - `/ip-guard/api/ban/`、`/ip-guard/api/unban/`、`/ip-guard/api/ban-list/`：封禁与分页列表（支持 `q`、`active`、`source`）
 - `/ip-guard/api/access-logs/`：审计分页（支持 `decision`、`country`、`path`、`q`、`start`/`end` 日期 `YYYY-MM-DD`）
-- `/ip-guard/api/access-logs/export/`：按相同筛选条件导出 CSV（最多 1 万条，需 staff 登录态）
+- `/ip-guard/api/access-logs/export/`：按相同筛选条件导出 CSV（最多 1 万条，需 staff；Session 凭 Cookie，JWT 凭 `Authorization: Bearer`）
 - `/ip-guard/api/health/`：健康状态（含 Redis 延迟、Provider 熔断失败计数）
+- `/ip-guard/api/auth/jwt/login/`、`/ip-guard/api/auth/jwt/refresh/`、`/ip-guard/api/auth/jwt/logout/`：JWT 登录、刷新与退出（Bearer）
 
 ## 3.7 Vue3 控制台接入
 
@@ -212,9 +215,29 @@ npm run dev
 - Django：`http://127.0.0.1:8010`
 - Vue：`http://127.0.0.1:5173`
 - Vite 代理：`/ip-guard/*`、`/admin/*`
-- 鉴权：Django Session + CSRF（前端自动携带 `X-CSRFToken`）
+- 鉴权：支持 Django Session + CSRF 与 JWT Bearer（接口会优先识别 Session，其次识别 `Authorization: Bearer <token>`）
+- 登录页可选 **Session** 或 **JWT**：Session 走 `/api/auth/login/` 建会话；JWT 走 `/api/auth/jwt/login/`，前端将 `access_token` / `refresh_token` 写入 `localStorage`，Axios 请求拦截器自动附加 Bearer；遇 **401** 时用独立客户端调用 `/api/auth/jwt/refresh/`（body：`refresh_token`）静默换新 access 后重试一次
+- 退出：依次尝试 Session `/api/auth/logout/` 与 JWT `/api/auth/jwt/logout/`（均为 CSRF 保护 POST），并清除本地 JWT；纯 JWT 无 Session 时忽略 logout 401
+- 审计 CSV 导出使用直连 `axios`（非 JSON 封装实例），JWT 模式下需同样携带 Bearer（已与登录态对齐）
+- 所有管理 API 均显式使用 `csrf_protect`（除 Token 下发接口外）；POST/PUT/PATCH/DELETE 必须带有效 CSRF Token
+- 用户信息：`/api/auth/me/` 返回 `groups` 与 `permissions`，用于前端菜单与路由鉴权
 - 仪表盘「近几日攻击与访问」：调用 `/api/recent-records/`，展示区间汇总、按日表格、最新拦截样本、最新全量访问样本、近期封禁
 - 仪表盘「国际来源」：ECharts 世界地图热力 + 国家/地区 Top 条形图，数据为接口 `country_distribution`（`country_code` 与 GeoJSON 的 `iso_a2` 对齐）；底图数据包 `@surbowl/world-geo-json-zh`（Unlicense）
+
+---
+
+
+### 3.8 权限模型（用户与组）
+
+管理 API 默认要求 `is_staff=True`，并按权限点校验（用户权限 + 所属组权限统一通过 `has_perm` 生效）：
+
+- `django_ip_safeguard.view_ipaccesslog`：仪表盘、审计日志、近期记录
+- `django_ip_safeguard.view_ipguardpolicy`：策略读取、健康状态
+- `django_ip_safeguard.change_ipguardpolicy`：策略更新
+- `django_ip_safeguard.view_ipbanrecord`：封禁列表
+- `django_ip_safeguard.change_ipbanrecord`：手动封禁/解封
+
+建议在 Django Admin 中创建组（如“安全运营只读”“安全策略管理员”），将上述权限分配给组后再给用户加组。
 
 ---
 

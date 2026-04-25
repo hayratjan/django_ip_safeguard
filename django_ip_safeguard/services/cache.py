@@ -32,6 +32,29 @@ class RedisCacheService:
     def _rate_limit_key(ip: str) -> str:
         return f"ip_guard:ratelimit:{ip}"
 
+    @staticmethod
+    def _geo_pool_data_key(pool_key: str) -> str:
+        return f"ip_guard:geo_pool:data:{pool_key}"
+
+    def get_geo_pool_data(self, pool_key: str) -> Optional[str]:
+        """读取地理 IP 池索引 JSON 字符串（无则 None）。"""
+
+        try:
+            return self.client.get(self._geo_pool_data_key(pool_key))
+        except Exception:  # noqa: BLE001
+            return None
+
+    def set_geo_pool_data(self, pool_key: str, data: dict) -> None:
+        """写入地理 IP 池索引（长期有效，由下次同步覆盖）。"""
+
+        try:
+            self.client.set(
+                self._geo_pool_data_key(pool_key),
+                json.dumps(data, separators=(",", ":")),
+            )
+        except Exception:  # noqa: BLE001
+            return None
+
     def get_ip_intel(self, ip: str) -> Optional[IpIntel]:
         try:
             raw = self.client.get(self._intel_key(ip))

@@ -24,11 +24,39 @@ class IpGuardPolicy(models.Model):
     cache_ttl = models.IntegerField("情报缓存TTL", default=3600)
     ban_ttl = models.IntegerField("封禁TTL", default=86400)
     use_db_log = models.BooleanField("记录数据库审计", default=False)
+    china_pool_rule = models.CharField(
+        "中国内网段池规则",
+        max_length=32,
+        default="off",
+        help_text="off=不启用；allow_only_in_pool=仅允许命中中国内 CIDR 池；block_in_pool=命中中国内池则拦截",
+    )
+    international_pool_rule = models.CharField(
+        "国际网段池规则",
+        max_length=32,
+        default="off",
+        help_text="off=不启用；allow_only_in_pool=仅允许命中国际 CIDR 池；block_in_pool=命中国际池则拦截",
+    )
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
         verbose_name = "IP防护策略"
         verbose_name_plural = "IP防护策略"
+
+
+class IpGeoPoolStatus(models.Model):
+    """地理 IP 池同步状态（与 Redis 中索引对应，便于控制台展示）。"""
+
+    pool_key = models.CharField("池标识", max_length=32, unique=True, db_index=True)
+    source_url = models.URLField("数据源 URL", max_length=512, blank=True)
+    line_count = models.PositiveIntegerField("原始行数", default=0)
+    v4_interval_count = models.PositiveIntegerField("IPv4 合并区间数", default=0)
+    v6_net_count = models.PositiveIntegerField("IPv6 网段数", default=0)
+    last_ok_at = models.DateTimeField("上次成功同步时间", null=True, blank=True)
+    last_error = models.TextField("上次错误信息", blank=True)
+
+    class Meta:
+        verbose_name = "地理IP池同步状态"
+        verbose_name_plural = "地理IP池同步状态"
 
 
 class IpAccessLog(models.Model):

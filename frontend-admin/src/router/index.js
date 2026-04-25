@@ -8,11 +8,11 @@ const routes = [
     component: () => import("../layouts/AppLayout.vue"),
     children: [
       { path: "", redirect: "/dashboard" },
-      { path: "dashboard", component: () => import("../views/DashboardView.vue") },
-      { path: "policy", component: () => import("../views/PolicyView.vue") },
-      { path: "ban", component: () => import("../views/BanManagementView.vue") },
-      { path: "logs", component: () => import("../views/AccessLogsView.vue") },
-      { path: "health", component: () => import("../views/HealthView.vue") },
+      { path: "dashboard", component: () => import("../views/DashboardView.vue"), meta: { perm: "django_ip_safeguard.view_ipaccesslog" } },
+      { path: "policy", component: () => import("../views/PolicyView.vue"), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
+      { path: "ban", component: () => import("../views/BanManagementView.vue"), meta: { perm: "django_ip_safeguard.view_ipbanrecord" } },
+      { path: "logs", component: () => import("../views/AccessLogsView.vue"), meta: { perm: "django_ip_safeguard.view_ipaccesslog" } },
+      { path: "health", component: () => import("../views/HealthView.vue"), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
     ],
   },
 ];
@@ -32,6 +32,16 @@ router.beforeEach(async (to) => {
   }
   if (!store.user) {
     return "/login";
+  }
+  const fallbackRoutes = ["/dashboard", "/policy", "/ban", "/logs", "/health"];
+  const firstAllowed = fallbackRoutes.find((path) => {
+    const route = routes[1].children.find((r) => `/${r.path}` === path);
+    if (!route?.meta?.perm) return true;
+    return store.hasPerm(route.meta.perm);
+  }) || "/login";
+  const requiredPerm = to.meta?.perm;
+  if (requiredPerm && !store.hasPerm(requiredPerm)) {
+    return firstAllowed;
   }
   return true;
 });

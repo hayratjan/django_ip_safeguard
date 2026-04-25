@@ -11,3 +11,8 @@ def test_default_settings_shape():
     assert cfg.high_risk_cache_ttl > cfg.low_risk_cache_ttl
     assert cfg.ip_blacklist == ()
     assert cfg.rate_limit_per_minute == 0
+    assert cfg.jwt_algorithm == "HS256"
+    assert isinstance(cfg.jwt_access_token_ttl_seconds, int)
+    assert isinstance(cfg.jwt_refresh_token_ttl_seconds, int)
+    assert cfg.jwt_access_token_ttl_seconds > 0
+    assert cfg.jwt_refresh_token_ttl_seconds >= cfg.jwt_access_token_ttl_seconds

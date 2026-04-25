@@ -9,3 +9,4 @@ build/
 .DS_Store
 demo_project/.venv/
 demo_project/db.sqlite3
+frontend-admin/node_modules/*

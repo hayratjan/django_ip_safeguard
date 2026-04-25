@@ -21,5 +21,10 @@ export const useAuthStore = defineStore("auth", {
       this.user = null;
       this.loaded = true;
     },
+    hasPerm(permission) {
+      if (!this.user) return false;
+      const perms = this.user.permissions || [];
+      return perms.includes(permission);
+    },
   },
 });

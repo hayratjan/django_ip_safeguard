@@ -1,8 +1,10 @@
 import csv
+import ipaddress
 import json
 import time
 from datetime import datetime, time as dt_time, timedelta
-from typing import Dict, Optional
+from functools import wraps
+from typing import Dict, List, Optional, Tuple
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import authenticate, login, logout
@@ -13,13 +15,19 @@ from django.db.models.functions import TruncDate, TruncHour
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
 from django_ip_safeguard.conf import get_settings
-from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGuardPolicy
+from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy
 from django_ip_safeguard.services.cache import RedisCacheService
-from django_ip_safeguard.services.policy_service import invalidate_policy_cache
+from django_ip_safeguard.services.jwt_service import (
+    get_user_from_access_token,
+    issue_token_pair,
+    refresh_access_token,
+)
+from django_ip_safeguard.services.geo_ip_pool_sync import sync_all_geo_pools
+from django_ip_safeguard.services.policy_service import GEO_POOL_RULE_CHOICES, invalidate_policy_cache
 
 
 def _load_json_body(request: HttpRequest) -> dict:
@@ -37,12 +45,109 @@ def api_error(message: str, code: int = 4000, status: int = 400, data=None) -> J
     return JsonResponse({"code": code, "message": message, "data": data or {}}, status=status)
 
 
+def api_permission_required(*permissions: str, any_perm: bool = False):
+    """API 权限校验装饰器：支持用户权限与用户组权限（经 has_perm 统一判断）。"""
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapped(request: HttpRequest, *args, **kwargs):
+            user = _resolve_request_user(request)
+            if not user.is_authenticated:
+                return api_error("未登录或登录已过期", code=4010, status=401)
+            if not user.is_staff:
+                return api_error("权限不足", code=4030, status=403)
+            if not permissions:
+                return view_func(request, *args, **kwargs)
+            if any_perm:
+                ok = any(user.has_perm(p) for p in permissions)
+            else:
+                ok = user.has_perms(permissions)
+            if not ok:
+                return api_error("权限不足：缺少操作权限", code=4031, status=403)
+            return view_func(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def _resolve_request_user(request: HttpRequest):
+    """优先 Session 用户，其次尝试 Bearer JWT。"""
+
+    if request.user.is_authenticated:
+        return request.user
+    auth = str(request.headers.get("Authorization", "")).strip()
+    if not auth.startswith("Bearer "):
+        return request.user
+    token = auth[7:].strip()
+    if not token:
+        return request.user
+    user = get_user_from_access_token(token)
+    if user is not None:
+        request.user = user
+    return request.user
+
+
 def _get_int_param(request: HttpRequest, name: str, default: int, min_value: int = 1, max_value: int = 200) -> int:
     try:
         value = int(request.GET.get(name, default))
     except (TypeError, ValueError):
         return default
     return max(min_value, min(max_value, value))
+
+
+def _normalize_country_codes(values: list, field_name: str) -> Tuple[Optional[List[str]], Optional[JsonResponse]]:
+    """国家码列表标准化：去空、去重、转大写并校验 ISO2 格式。"""
+
+    out: List[str] = []
+    seen = set()
+    for raw in values:
+        code = str(raw).strip().upper()
+        if not code:
+            continue
+        if len(code) != 2 or not code.isalpha():
+            return None, api_error(f"字段 {field_name} 仅支持两位国家码（如 CN/US）", code=4007, status=400)
+        if code not in seen:
+            seen.add(code)
+            out.append(code)
+    return out, None
+
+
+def _normalize_ip_rules(values: list, field_name: str) -> Tuple[Optional[List[str]], Optional[JsonResponse]]:
+    """IP 规则标准化：支持单 IP 或 CIDR，去空、去重。"""
+
+    out: List[str] = []
+    seen = set()
+    for raw in values:
+        rule = str(raw).strip()
+        if not rule:
+            continue
+        try:
+            if "/" in rule:
+                net = ipaddress.ip_network(rule, strict=False)
+                normalized = str(net)
+            else:
+                addr = ipaddress.ip_address(rule)
+                normalized = str(addr)
+        except ValueError:
+            return None, api_error(f"字段 {field_name} 存在非法 IP/CIDR: {rule}", code=4008, status=400)
+        if normalized not in seen:
+            seen.add(normalized)
+            out.append(normalized)
+    return out, None
+
+
+def _normalize_string_list(values: list) -> List[str]:
+    """字符串数组通用标准化：去空、去重、保序。"""
+
+    out: List[str] = []
+    seen = set()
+    for raw in values:
+        s = str(raw).strip()
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
 
 
 def _apply_access_log_filters(request: HttpRequest, queryset):
@@ -137,7 +242,8 @@ def dashboard_page_view(request: HttpRequest) -> HttpResponse:
     return HttpResponse(html)
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipaccesslog")
 @require_GET
 def dashboard_api_view(request: HttpRequest) -> JsonResponse:
     """运营统计接口。"""
@@ -195,10 +301,20 @@ def dashboard_api_view(request: HttpRequest) -> JsonResponse:
     )
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required(
+    "django_ip_safeguard.view_ipguardpolicy",
+    "django_ip_safeguard.change_ipguardpolicy",
+    any_perm=True,
+)
 @require_http_methods(["GET", "POST"])
 def policy_view(request: HttpRequest) -> JsonResponse:
     """策略中心读取与更新接口。"""
+
+    if request.method == "GET" and not request.user.has_perm("django_ip_safeguard.view_ipguardpolicy"):
+        return api_error("权限不足：缺少策略查看权限", code=4031, status=403)
+    if request.method == "POST" and not request.user.has_perm("django_ip_safeguard.change_ipguardpolicy"):
+        return api_error("权限不足：缺少策略修改权限", code=4031, status=403)
 
     policy, _created = IpGuardPolicy.objects.get_or_create(name="default")
     if request.method == "GET":
@@ -220,7 +336,13 @@ def policy_view(request: HttpRequest) -> JsonResponse:
                 "cache_ttl": policy.cache_ttl,
                 "ban_ttl": policy.ban_ttl,
                 "use_db_log": policy.use_db_log,
+                "china_pool_rule": getattr(policy, "china_pool_rule", "off"),
+                "international_pool_rule": getattr(policy, "international_pool_rule", "off"),
                 "updated_at": policy.updated_at.isoformat(),
+                "pool_feed_urls": {
+                    "geo_china_pool_url": get_settings().geo_china_pool_url,
+                    "geo_international_pool_url": get_settings().geo_international_pool_url,
+                },
             }
         )
 
@@ -262,6 +384,8 @@ def policy_view(request: HttpRequest) -> JsonResponse:
         "cache_ttl",
         "ban_ttl",
         "use_db_log",
+        "china_pool_rule",
+        "international_pool_rule",
     ]
     for field in editable_fields:
         if field not in payload:
@@ -269,13 +393,34 @@ def policy_view(request: HttpRequest) -> JsonResponse:
         val = payload[field]
         if field in list_json_fields and not isinstance(val, list):
             return api_error(f"字段 {field} 必须为 JSON 数组", code=4005, status=400)
+        if field in {"allowed_countries", "blocked_countries"}:
+            normalized, err = _normalize_country_codes(val, field)
+            if err:
+                return err
+            val = normalized
+        elif field in {"ip_whitelist", "ip_blacklist"}:
+            normalized, err = _normalize_ip_rules(val, field)
+            if err:
+                return err
+            val = normalized
+        elif field in {"blocked_risk_tags", "fail_open_path_prefixes", "fail_close_path_prefixes"}:
+            val = _normalize_string_list(val)
+        elif field in {"china_pool_rule", "international_pool_rule"}:
+            val = str(val).strip().lower()
+            if val not in GEO_POOL_RULE_CHOICES:
+                return api_error(
+                    f"字段 {field} 须为 off、allow_only_in_pool 或 block_in_pool",
+                    code=4012,
+                    status=400,
+                )
         setattr(policy, field, val)
     policy.save()
     invalidate_policy_cache()
     return api_success({"name": policy.name}, message="策略已更新")
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.change_ipbanrecord")
 @require_http_methods(["POST"])
 def unban_ip_view(request: HttpRequest) -> JsonResponse:
     """手动解封 IP。"""
@@ -295,7 +440,8 @@ def unban_ip_view(request: HttpRequest) -> JsonResponse:
     return api_success({"ip": ip}, message="解封成功")
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.change_ipbanrecord")
 @require_http_methods(["POST"])
 def ban_ip_view(request: HttpRequest) -> JsonResponse:
     """手动封禁 IP。"""
@@ -327,7 +473,8 @@ def ban_ip_view(request: HttpRequest) -> JsonResponse:
     return api_success({"ip": ip, "ttl": max(60, ttl)}, message="封禁成功")
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipbanrecord")
 @require_GET
 def ban_list_view(request: HttpRequest) -> JsonResponse:
     """封禁列表分页查询。"""
@@ -360,7 +507,8 @@ def ban_list_view(request: HttpRequest) -> JsonResponse:
     )
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipaccesslog")
 @require_GET
 def access_log_list_view(request: HttpRequest) -> JsonResponse:
     """审计日志分页与筛选。"""
@@ -393,7 +541,8 @@ class _Echo:
         return value
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipaccesslog")
 @require_GET
 def access_log_export_view(request: HttpRequest) -> StreamingHttpResponse:
     """按当前筛选条件导出审计日志（CSV，最多 1 万条）。"""
@@ -426,7 +575,12 @@ def access_log_export_view(request: HttpRequest) -> StreamingHttpResponse:
     return response
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required(
+    "django_ip_safeguard.view_ipaccesslog",
+    "django_ip_safeguard.view_ipbanrecord",
+    any_perm=True,
+)
 @require_GET
 def recent_records_view(request: HttpRequest) -> JsonResponse:
     """近若干天的攻击（拦截）记录、全量访问记录、按日汇总与近期封禁。"""
@@ -488,7 +642,8 @@ def recent_records_view(request: HttpRequest) -> JsonResponse:
     )
 
 
-@staff_member_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipguardpolicy")
 @require_GET
 def health_view(request: HttpRequest) -> JsonResponse:
     """插件健康状态接口。"""
@@ -499,6 +654,18 @@ def health_view(request: HttpRequest) -> JsonResponse:
     redis_ok = cache_service.ping()
     redis_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
     provider_failures = cache_service.get_provider_failures()
+    pool_rows = []
+    for row in IpGeoPoolStatus.objects.all().order_by("pool_key"):
+        pool_rows.append(
+            {
+                "pool_key": row.pool_key,
+                "line_count": row.line_count,
+                "v4_interval_count": row.v4_interval_count,
+                "v6_net_count": row.v6_net_count,
+                "last_ok_at": row.last_ok_at.isoformat() if row.last_ok_at else None,
+                "last_error": (row.last_error or "")[:500],
+            }
+        )
     return api_success(
         {
             "service": "django-ip-safeguard",
@@ -507,28 +674,77 @@ def health_view(request: HttpRequest) -> JsonResponse:
             "provider": cfg.provider,
             "policy_center_enabled": cfg.enable_policy_center,
             "provider_circuit_failures": provider_failures,
+            "geo_ip_pools": pool_rows,
+            "geo_pool_feed_urls": {
+                "china": cfg.geo_china_pool_url,
+                "international": cfg.geo_international_pool_url or "",
+            },
         }
     )
 
 
-@login_required
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipguardpolicy")
+@require_GET
+def geo_pools_status_view(request: HttpRequest) -> JsonResponse:
+    """地理 IP 池同步状态与数据源说明（URL 来自 Django settings）。"""
+
+    cfg = get_settings()
+    rows = []
+    for row in IpGeoPoolStatus.objects.all().order_by("pool_key"):
+        rows.append(
+            {
+                "pool_key": row.pool_key,
+                "source_url": row.source_url,
+                "line_count": row.line_count,
+                "v4_interval_count": row.v4_interval_count,
+                "v6_net_count": row.v6_net_count,
+                "last_ok_at": row.last_ok_at.isoformat() if row.last_ok_at else None,
+                "last_error": row.last_error or "",
+            }
+        )
+    return api_success(
+        {
+            "pools": rows,
+            "feed_urls": {
+                "china": cfg.geo_china_pool_url,
+                "international": cfg.geo_international_pool_url or "",
+            },
+            "rule_choices": sorted(GEO_POOL_RULE_CHOICES),
+        }
+    )
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.change_ipguardpolicy")
+@require_http_methods(["POST"])
+def geo_pools_sync_view(request: HttpRequest) -> JsonResponse:
+    """手动触发从远程拉取 CIDR 并刷新 Redis 索引（与定时任务共用逻辑）。"""
+
+    summary = sync_all_geo_pools(get_settings())
+    return api_success(summary, message="同步任务已执行")
+
+
+@csrf_protect
+@api_permission_required()
 @require_GET
 def auth_me_view(request: HttpRequest) -> JsonResponse:
     """返回当前登录态信息。"""
 
-    user = request.user
-    if not user.is_staff:
-        return api_error("权限不足", code=4030, status=403)
+    user = _resolve_request_user(request)
     return api_success(
         {
             "username": user.username,
             "is_staff": user.is_staff,
             "is_superuser": user.is_superuser,
+            "groups": list(user.groups.values_list("name", flat=True)),
+            "permissions": sorted(user.get_all_permissions()),
         }
     )
 
 
 @ensure_csrf_cookie
+@csrf_protect
 @require_GET
 def csrf_view(_request: HttpRequest) -> JsonResponse:
     """下发 CSRF Cookie。"""
@@ -536,6 +752,7 @@ def csrf_view(_request: HttpRequest) -> JsonResponse:
     return api_success({"csrf": "ok"})
 
 
+@csrf_protect
 @require_http_methods(["POST"])
 def login_view(request: HttpRequest) -> JsonResponse:
     """后台登录接口，使用 Django Session。"""
@@ -558,8 +775,56 @@ def login_view(request: HttpRequest) -> JsonResponse:
     return api_success({"username": user.username}, message="登录成功")
 
 
+@require_http_methods(["POST"])
+@csrf_protect
+def jwt_login_view(request: HttpRequest) -> JsonResponse:
+    """JWT 登录接口：返回 access/refresh token。"""
+
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error("JSON 格式错误", code=4001, status=400)
+    username = str(payload.get("username", "")).strip()
+    password = str(payload.get("password", ""))
+    if not username or not password:
+        return api_error("用户名或密码不能为空", code=4003, status=400)
+    user = authenticate(request, username=username, password=password)
+    if not user:
+        return api_error("用户名或密码错误", code=4004, status=401)
+    if not user.is_staff:
+        return api_error("该账号无后台权限", code=4030, status=403)
+    return api_success(issue_token_pair(user), message="JWT 登录成功")
+
+
+@require_http_methods(["POST"])
+@csrf_protect
+def jwt_refresh_view(request: HttpRequest) -> JsonResponse:
+    """JWT 刷新接口：通过 refresh token 签发新的 access token。"""
+
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error("JSON 格式错误", code=4001, status=400)
+    refresh_token = str(payload.get("refresh_token", "")).strip()
+    if not refresh_token:
+        return api_error("refresh_token 不能为空", code=4009, status=400)
+    refreshed = refresh_access_token(refresh_token)
+    if not refreshed:
+        return api_error("refresh_token 无效或已过期", code=4011, status=401)
+    return api_success(refreshed, message="刷新成功")
+
+
 @login_required
+@csrf_protect
 @require_http_methods(["POST"])
 def logout_view(request: HttpRequest) -> JsonResponse:
     logout(request)
     return api_success(message="已退出登录")
+
+
+@require_http_methods(["POST"])
+@csrf_protect
+def jwt_logout_view(_request: HttpRequest) -> JsonResponse:
+    """JWT 退出：服务端无状态，客户端删除 token 即可。"""
+
+    return api_success(message="JWT 已退出（请客户端删除本地 token）")

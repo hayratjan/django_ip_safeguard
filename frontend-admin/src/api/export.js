@@ -1,12 +1,19 @@
 import axios from "axios";
+import { JWT_ACCESS_KEY } from "./http";
 
 /**
- * 导出审计日志 CSV（不走统一 JSON 拦截器，直接拉取文件流）。
+ * 导出审计日志 CSV（不走统一 JSON 拦截器，直接拉取文件流；JWT 模式需显式带 Bearer）。
  */
 export const downloadAccessLogsCsv = async (params) => {
+  const token = localStorage.getItem(JWT_ACCESS_KEY);
+  const headers = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const res = await axios.get("/ip-guard/api/access-logs/export/", {
     params,
     withCredentials: true,
+    headers,
     responseType: "blob",
     timeout: 120000,
   });

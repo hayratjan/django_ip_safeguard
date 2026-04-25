@@ -9,6 +9,7 @@ from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.ip_matcher import first_matching_rule
 from django_ip_safeguard.services.ip_resolver import resolve_client_ip
 from django_ip_safeguard.services.provider_factory import build_provider
+from django_ip_safeguard.services.geo_ip_pool_runtime import evaluate_geo_ip_pool_rules
 from django_ip_safeguard.services.policy_service import load_effective_policy
 from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
 from django_ip_safeguard.types import IpIntel
@@ -70,6 +71,27 @@ class IpGuardMiddleware:
                 {
                     "detail": "访问被安全策略阻止",
                     "reason": f"命中 IP 黑名单: {bl_rule}",
+                    "ip": client_ip,
+                },
+                status=runtime_config.block_status_code,
+            )
+
+        geo_reason = evaluate_geo_ip_pool_rules(client_ip, runtime_config, self.cache_service)
+        if geo_reason:
+            log_access_decision(
+                enabled=runtime_config.use_db_log,
+                ip=client_ip,
+                path=request.path,
+                decision="block",
+                reason=geo_reason,
+                ip_intel=policy_intel,
+                ip_mask_enabled=runtime_config.ip_mask_enabled,
+                ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+            )
+            return JsonResponse(
+                {
+                    "detail": "访问被安全策略阻止",
+                    "reason": geo_reason,
                     "ip": client_ip,
                 },
                 status=runtime_config.block_status_code,

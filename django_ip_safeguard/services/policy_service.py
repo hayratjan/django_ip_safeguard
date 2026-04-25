@@ -5,6 +5,9 @@ from django_ip_safeguard.conf import IpGuardSettings
 
 _POLICY_CACHE = {"data": None, "expires_at": 0.0}
 
+# 与策略中心、API 校验一致的地理池规则取值
+GEO_POOL_RULE_CHOICES = frozenset({"off", "allow_only_in_pool", "block_in_pool"})
+
 
 def _to_upper_tuple(value) -> tuple:
     if not value:
@@ -40,6 +43,8 @@ def load_effective_policy(base_config: IpGuardSettings) -> IpGuardSettings:
             _POLICY_CACHE["expires_at"] = now + base_config.policy_cache_seconds
             return base_config
 
+        china_rule = str(getattr(policy, "china_pool_rule", "off") or "off").strip().lower()
+        intl_rule = str(getattr(policy, "international_pool_rule", "off") or "off").strip().lower()
         merged = replace(
             base_config,
             enabled=policy.enabled,
@@ -57,6 +62,8 @@ def load_effective_policy(base_config: IpGuardSettings) -> IpGuardSettings:
             cache_ttl=policy.cache_ttl,
             ban_ttl=policy.ban_ttl,
             use_db_log=policy.use_db_log,
+            china_pool_rule=china_rule if china_rule in GEO_POOL_RULE_CHOICES else "off",
+            international_pool_rule=intl_rule if intl_rule in GEO_POOL_RULE_CHOICES else "off",
         )
         _POLICY_CACHE["data"] = merged
         _POLICY_CACHE["expires_at"] = now + base_config.policy_cache_seconds

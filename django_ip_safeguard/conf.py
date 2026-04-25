@@ -43,6 +43,16 @@ class IpGuardSettings:
     low_risk_cache_ttl: int = 1800
     dedupe_lock_seconds: int = 3
     admin_url_prefix: str = "ip-guard"
+    jwt_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_ttl_seconds: int = 7200
+    jwt_refresh_token_ttl_seconds: int = 604800
+    # 地理 IP 池（中国 / 国际 CIDR 列表，Redis 存储 + 定时同步）
+    china_pool_rule: str = "off"
+    international_pool_rule: str = "off"
+    geo_china_pool_url: str = "https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt"
+    geo_international_pool_url: str = ""
+    geo_pool_index_cache_seconds: int = 60
 
 
 def _to_tuple(value: Optional[object]) -> Tuple[str, ...]:
@@ -109,4 +119,29 @@ def get_settings() -> IpGuardSettings:
         low_risk_cache_ttl=int(getattr(settings, "IP_GUARD_LOW_RISK_CACHE_TTL", 1800)),
         dedupe_lock_seconds=int(getattr(settings, "IP_GUARD_DEDUPE_LOCK_SECONDS", 3)),
         admin_url_prefix=str(getattr(settings, "IP_GUARD_ADMIN_URL_PREFIX", "ip-guard")).strip("/"),
+        jwt_secret_key=str(
+            getattr(settings, "IP_GUARD_JWT_SECRET_KEY", getattr(settings, "SECRET_KEY", ""))
+        ),
+        jwt_algorithm=str(getattr(settings, "IP_GUARD_JWT_ALGORITHM", "HS256")),
+        jwt_access_token_ttl_seconds=int(getattr(settings, "IP_GUARD_JWT_ACCESS_TTL", 7200)),
+        jwt_refresh_token_ttl_seconds=int(getattr(settings, "IP_GUARD_JWT_REFRESH_TTL", 604800)),
+        china_pool_rule=str(getattr(settings, "IP_GUARD_CHINA_POOL_RULE", "off")).strip().lower()
+        or "off",
+        international_pool_rule=str(
+            getattr(settings, "IP_GUARD_INTERNATIONAL_POOL_RULE", "off")
+        ).strip().lower()
+        or "off",
+        geo_china_pool_url=str(
+            getattr(
+                settings,
+                "IP_GUARD_GEO_CHINA_POOL_URL",
+                "https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt",
+            )
+        ).strip(),
+        geo_international_pool_url=str(
+            getattr(settings, "IP_GUARD_GEO_INTERNATIONAL_POOL_URL", "")
+        ).strip(),
+        geo_pool_index_cache_seconds=int(
+            getattr(settings, "IP_GUARD_GEO_POOL_INDEX_CACHE_SECONDS", 60)
+        ),
     )
