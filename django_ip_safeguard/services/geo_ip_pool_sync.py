@@ -51,7 +51,7 @@ def _fetch_text(url: str, timeout: float) -> str:
     with httpx.Client(
         timeout=effective_timeout,
         follow_redirects=True,
-        limits=httpx.Limits(max_redirects=MAX_REDIRECTS),
+        max_redirects=MAX_REDIRECTS,
     ) as client:
         resp = client.get(url)
         resp.raise_for_status()
