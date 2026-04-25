@@ -93,7 +93,9 @@
           <el-table-column prop="last_ok_at" :label="t('policy.lastSuccess')" min-width="160" />
           <el-table-column prop="last_error" :label="t('policy.error')" min-width="200" show-overflow-tooltip />
         </el-table>
-        <el-button class="sync-btn" type="primary" plain :loading="syncing" :disabled="!canEditPolicy" @click="onSyncPools">
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" :loading="syncing" :disabled="!canEditPolicy" @click="onSyncPools">
           {{ t('policy.syncNow') }}
         </el-button>
       </el-form-item>
