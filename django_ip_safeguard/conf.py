@@ -177,7 +177,7 @@ def get_settings() -> IpGuardSettings:
             getattr(
                 settings,
                 "IP_GUARD_GEO_CHINA_POOL_URL",
-                "https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt",
+                "https://ispip.clang.cn/all_cn_cidr.txt",
             )
         ).strip(),
         geo_international_pool_url=str(
@@ -218,7 +218,14 @@ def get_settings() -> IpGuardSettings:
         ),
         geo_pool_multi_source_enabled=bool(getattr(settings, "IP_GUARD_GEO_POOL_MULTI_SOURCE_ENABLED", True)),
         geo_china_pool_backup_urls=_to_str_tuple(
-            getattr(settings, "IP_GUARD_GEO_CHINA_POOL_BACKUP_URLS", ())
+            getattr(
+                settings,
+                "IP_GUARD_GEO_CHINA_POOL_BACKUP_URLS",
+                (
+                    "https://ispip.clang.cn/all_cn.txt",
+                    "https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt",
+                ),
+            )
         ),
         geo_international_pool_backup_urls=_to_str_tuple(
             getattr(settings, "IP_GUARD_GEO_INTERNATIONAL_POOL_BACKUP_URLS", ())
