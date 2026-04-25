@@ -25,6 +25,8 @@ class IpGuardSettings:
     allowed_countries: Tuple[str, ...] = ()
     blocked_risk_tags: Tuple[str, ...] = ("tor", "proxy", "vpn")
     ip_whitelist: Tuple[str, ...] = ()
+    ip_blacklist: Tuple[str, ...] = ()
+    rate_limit_per_minute: int = 0
     fail_open: bool = True
     fail_open_path_prefixes: Tuple[str, ...] = ()
     fail_close_path_prefixes: Tuple[str, ...] = ()
@@ -83,6 +85,8 @@ def get_settings() -> IpGuardSettings:
         allowed_countries=_to_tuple(getattr(settings, "IP_GUARD_ALLOWED_COUNTRIES", ())),
         blocked_risk_tags=_to_tuple(getattr(settings, "IP_GUARD_BLOCKED_RISK_TAGS", ("tor", "proxy", "vpn"))),
         ip_whitelist=_to_str_tuple(getattr(settings, "IP_GUARD_IP_WHITELIST", ())),
+        ip_blacklist=_to_str_tuple(getattr(settings, "IP_GUARD_IP_BLACKLIST", ())),
+        rate_limit_per_minute=int(getattr(settings, "IP_GUARD_RATE_LIMIT_PER_MINUTE", 0)),
         fail_open=getattr(settings, "IP_GUARD_FAIL_OPEN", True),
         fail_open_path_prefixes=_to_str_tuple(getattr(settings, "IP_GUARD_FAIL_OPEN_PATH_PREFIXES", ())),
         fail_close_path_prefixes=_to_str_tuple(getattr(settings, "IP_GUARD_FAIL_CLOSE_PATH_PREFIXES", ())),

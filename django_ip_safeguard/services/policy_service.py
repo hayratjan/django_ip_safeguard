@@ -48,6 +48,8 @@ def load_effective_policy(base_config: IpGuardSettings) -> IpGuardSettings:
             allowed_countries=_to_upper_tuple(policy.allowed_countries),
             blocked_countries=_to_upper_tuple(policy.blocked_countries),
             ip_whitelist=_to_str_tuple(policy.ip_whitelist),
+            ip_blacklist=_to_str_tuple(policy.ip_blacklist),
+            rate_limit_per_minute=int(policy.rate_limit_per_minute or 0),
             fail_open=policy.fail_open,
             fail_open_path_prefixes=_to_str_tuple(policy.fail_open_path_prefixes),
             fail_close_path_prefixes=_to_str_tuple(policy.fail_close_path_prefixes),

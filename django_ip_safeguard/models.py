@@ -11,6 +11,12 @@ class IpGuardPolicy(models.Model):
     allowed_countries = models.JSONField("国家白名单", default=list, blank=True)
     blocked_countries = models.JSONField("国家黑名单", default=list, blank=True)
     ip_whitelist = models.JSONField("IP白名单", default=list, blank=True)
+    ip_blacklist = models.JSONField("IP黑名单", default=list, blank=True)
+    rate_limit_per_minute = models.PositiveIntegerField(
+        "单 IP 每分钟请求上限",
+        default=0,
+        help_text="0 表示不启用；超过则直接拦截（不调用情报接口）",
+    )
     fail_open = models.BooleanField("全局失败放行", default=True)
     fail_open_path_prefixes = models.JSONField("按路径失败放行", default=list, blank=True)
     fail_close_path_prefixes = models.JSONField("按路径失败阻断", default=list, blank=True)

@@ -6,10 +6,12 @@ from django_ip_safeguard.conf import get_settings
 from django_ip_safeguard.services.audit_service import log_access_decision
 from django_ip_safeguard.services.ban_service import ban_ip
 from django_ip_safeguard.services.cache import RedisCacheService
+from django_ip_safeguard.services.ip_matcher import first_matching_rule
 from django_ip_safeguard.services.ip_resolver import resolve_client_ip
 from django_ip_safeguard.services.provider_factory import build_provider
 from django_ip_safeguard.services.policy_service import load_effective_policy
 from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
+from django_ip_safeguard.types import IpIntel
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +47,53 @@ class IpGuardMiddleware:
         if not client_ip:
             return self.get_response(request)
 
-        if client_ip in runtime_config.ip_whitelist:
+        # 策略 IP：白名单优先（支持单 IP / CIDR），命中则跳过黑名单、限流与情报
+        wl_hit, _ = first_matching_rule(client_ip, runtime_config.ip_whitelist)
+        if wl_hit:
             return self.get_response(request)
+
+        policy_intel = IpIntel(ip=client_ip, country_code="", risk_score=0, risk_tags=[], source="policy")
+
+        bl_hit, bl_rule = first_matching_rule(client_ip, runtime_config.ip_blacklist)
+        if bl_hit:
+            log_access_decision(
+                enabled=runtime_config.use_db_log,
+                ip=client_ip,
+                path=request.path,
+                decision="block",
+                reason=f"命中 IP 黑名单: {bl_rule}",
+                ip_intel=policy_intel,
+                ip_mask_enabled=runtime_config.ip_mask_enabled,
+                ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+            )
+            return JsonResponse(
+                {
+                    "detail": "访问被安全策略阻止",
+                    "reason": f"命中 IP 黑名单: {bl_rule}",
+                    "ip": client_ip,
+                },
+                status=runtime_config.block_status_code,
+            )
+
+        if self.cache_service.is_rate_limited(client_ip, runtime_config.rate_limit_per_minute):
+            log_access_decision(
+                enabled=runtime_config.use_db_log,
+                ip=client_ip,
+                path=request.path,
+                decision="block",
+                reason="超过单 IP 每分钟请求上限",
+                ip_intel=policy_intel,
+                ip_mask_enabled=runtime_config.ip_mask_enabled,
+                ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+            )
+            return JsonResponse(
+                {
+                    "detail": "访问被安全策略阻止",
+                    "reason": "超过单 IP 每分钟请求上限",
+                    "ip": client_ip,
+                },
+                status=runtime_config.block_status_code,
+            )
 
         if self.cache_service.is_banned(client_ip):
             return JsonResponse(

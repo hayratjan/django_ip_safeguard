@@ -8,7 +8,14 @@ from django_ip_safeguard.services.policy_service import invalidate_policy_cache
 class IpGuardPolicyAdmin(admin.ModelAdmin):
     """IP 策略中心管理。"""
 
-    list_display = ("name", "enabled", "risk_score_threshold", "fail_open", "updated_at")
+    list_display = (
+        "name",
+        "enabled",
+        "risk_score_threshold",
+        "rate_limit_per_minute",
+        "fail_open",
+        "updated_at",
+    )
     search_fields = ("name",)
 
     def save_model(self, request, obj, form, change):

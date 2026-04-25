@@ -211,6 +211,8 @@ def policy_view(request: HttpRequest) -> JsonResponse:
                 "allowed_countries": policy.allowed_countries,
                 "blocked_countries": policy.blocked_countries,
                 "ip_whitelist": policy.ip_whitelist,
+                "ip_blacklist": policy.ip_blacklist,
+                "rate_limit_per_minute": policy.rate_limit_per_minute,
                 "fail_open": policy.fail_open,
                 "fail_open_path_prefixes": policy.fail_open_path_prefixes,
                 "fail_close_path_prefixes": policy.fail_close_path_prefixes,
@@ -226,11 +228,22 @@ def policy_view(request: HttpRequest) -> JsonResponse:
         payload = _load_json_body(request)
     except json.JSONDecodeError:
         return api_error("JSON 格式错误", code=4001, status=400)
+
+    if "rate_limit_per_minute" in payload:
+        try:
+            rl = int(payload["rate_limit_per_minute"])
+        except (TypeError, ValueError):
+            return api_error("rate_limit_per_minute 必须为整数", code=4006, status=400)
+        if rl < 0 or rl > 100000:
+            return api_error("rate_limit_per_minute 范围为 0～100000（0 表示关闭）", code=4006, status=400)
+        policy.rate_limit_per_minute = rl
+
     list_json_fields = {
         "blocked_risk_tags",
         "allowed_countries",
         "blocked_countries",
         "ip_whitelist",
+        "ip_blacklist",
         "fail_open_path_prefixes",
         "fail_close_path_prefixes",
     }
@@ -241,6 +254,7 @@ def policy_view(request: HttpRequest) -> JsonResponse:
         "allowed_countries",
         "blocked_countries",
         "ip_whitelist",
+        "ip_blacklist",
         "fail_open",
         "fail_open_path_prefixes",
         "fail_close_path_prefixes",

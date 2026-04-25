@@ -115,7 +115,9 @@
 - `IP_GUARD_BLOCKED_RISK_TAGS`：风险标签黑名单，默认 `("TOR", "PROXY", "VPN")`
 - `IP_GUARD_ALLOWED_COUNTRIES`：国家白名单（配置后只允许名单内国家）
 - `IP_GUARD_BLOCKED_COUNTRIES`：国家黑名单
-- `IP_GUARD_IP_WHITELIST`：IP 白名单（命中直接放行）
+- `IP_GUARD_IP_WHITELIST`：IP 白名单（单 IP 或 CIDR，命中直接放行）
+- `IP_GUARD_IP_BLACKLIST`：IP 黑名单（单 IP 或 CIDR；若启用策略中心，以库表 `IpGuardPolicy` 为准）
+- `IP_GUARD_RATE_LIMIT_PER_MINUTE`：单 IP 每分钟请求上限，`0` 关闭；依赖 Redis 计数
 
 ## 3.4 代理与降级配置
 
@@ -186,7 +188,7 @@ urlpatterns = [
 - `/ip-guard/`：Dashboard 页面
 - `/ip-guard/api/dashboard/`：运营统计（含 24h 拦截率、决策分布、按小时趋势、热门路径、拦截原因 Top 等）
 - `/ip-guard/api/recent-records/`：近若干天（`days`，默认 7、最大 30）攻击/拦截记录、IP 访问记录、按日放行与拦截汇总、近期封禁；可选 `attack_limit`、`access_limit`、`ban_limit`（默认 100、100、40，各自有上限）
-- `/ip-guard/api/policy/`：策略读取/更新（GET/POST）
+- `/ip-guard/api/policy/`：策略读取/更新（GET/POST，含 IP 白/黑名单、单 IP 每分钟请求上限等）
 - `/ip-guard/api/ban/`、`/ip-guard/api/unban/`、`/ip-guard/api/ban-list/`：封禁与分页列表（支持 `q`、`active`、`source`）
 - `/ip-guard/api/access-logs/`：审计分页（支持 `decision`、`country`、`path`、`q`、`start`/`end` 日期 `YYYY-MM-DD`）
 - `/ip-guard/api/access-logs/export/`：按相同筛选条件导出 CSV（最多 1 万条，需 staff 登录态）
@@ -228,6 +230,7 @@ npm run dev
 - `services/provider_http.py`：HTTP Provider 实现
 - `services/provider_factory.py`：Provider 构建工厂
 - `services/policy_service.py`：策略中心加载与缓存
+- `services/ip_matcher.py`：IP 白/黑名单规则匹配（精确与 CIDR）
 - `services/risk_engine.py`：规则引擎
 - `services/ban_service.py`：封禁写入
 - `services/audit_service.py`：审计写库
@@ -379,7 +382,7 @@ python -m twine upload dist/*
 - 数据库审计写入开关
 - 单测与文档基础完善
 - Django 管理 API 企业化（统一响应、分页筛选、错误码）
-- Vue3 + Element Plus 企业控制台（登录、仪表盘多维度统计与近几日攻击/访问记录、国际来源 ECharts 地图可视化、完整策略表单含路径级 fail-open/close 与 DB 审计开关、封禁分页与来源筛选、审计分页/路径/日期/导出 CSV、健康详情）
+- Vue3 + Element Plus 企业控制台（登录、仪表盘多维度统计与近几日攻击/访问记录、国际来源 ECharts 地图可视化、完整策略表单含 IP 白/黑名单与限流、路径级 fail-open/close 与 DB 审计开关、封禁分页与来源筛选、审计分页/路径/日期/导出 CSV、健康详情）
 - Session/CSRF 鉴权联动与前后端联调验证
 
 下一步建议：

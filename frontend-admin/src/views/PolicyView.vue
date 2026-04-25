@@ -43,9 +43,26 @@
           filterable
           allow-create
           default-first-option
-          placeholder="单 IP 或网段"
+          placeholder="单 IP 或 CIDR，如 203.0.113.5 或 10.0.0.0/8"
           style="width: 100%"
         />
+        <span class="hint">命中白名单的请求直接放行，不查情报、不计入黑名单与限流</span>
+      </el-form-item>
+      <el-form-item label="IP 黑名单">
+        <el-select
+          v-model="form.ip_blacklist"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          placeholder="单 IP 或 CIDR，如 198.51.100.0/24"
+          style="width: 100%"
+        />
+        <span class="hint">在白名单之后、情报之前拦截；不自动写入封禁键</span>
+      </el-form-item>
+      <el-form-item label="单 IP 每分钟请求上限">
+        <el-input-number v-model="form.rate_limit_per_minute" :min="0" :max="100000" />
+        <span class="hint">0 关闭；启用后同一 IP 在 60 秒滑动窗口内超过该次数则拦截（Redis 计数）</span>
       </el-form-item>
       <el-form-item label="全局失败放行"><el-switch v-model="form.fail_open" /></el-form-item>
       <el-form-item label="按路径失败放行前缀">
@@ -98,6 +115,8 @@ const emptyForm = () => ({
   allowed_countries: [],
   blocked_countries: [],
   ip_whitelist: [],
+  ip_blacklist: [],
+  rate_limit_per_minute: 0,
   fail_open: true,
   fail_open_path_prefixes: [],
   fail_close_path_prefixes: [],

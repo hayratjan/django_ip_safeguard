@@ -28,6 +28,10 @@ class RedisCacheService:
     def _circuit_key() -> str:
         return "ip_guard:provider:circuit_failures"
 
+    @staticmethod
+    def _rate_limit_key(ip: str) -> str:
+        return f"ip_guard:ratelimit:{ip}"
+
     def get_ip_intel(self, ip: str) -> Optional[IpIntel]:
         try:
             raw = self.client.get(self._intel_key(ip))
@@ -115,3 +119,17 @@ class RedisCacheService:
             return int(raw)
         except Exception:  # noqa: BLE001
             return 0
+
+    def is_rate_limited(self, ip: str, max_per_minute: int) -> bool:
+        """滑动窗口：自首次请求起 60 秒内计数，超过 max 则视为限流（max<=0 不启用）。"""
+
+        if max_per_minute <= 0:
+            return False
+        key = self._rate_limit_key(ip)
+        try:
+            count = int(self.client.incr(key))
+            if count == 1:
+                self.client.expire(key, 60)
+            return count > max_per_minute
+        except Exception:  # noqa: BLE001
+            return False

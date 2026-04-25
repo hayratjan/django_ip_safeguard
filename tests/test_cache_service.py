@@ -53,3 +53,13 @@ def test_provider_failure_counter(monkeypatch):
     assert cache.get_provider_failures() == 2
     cache.clear_provider_failures()
     assert cache.get_provider_failures() == 0
+
+
+def test_rate_limit_window(monkeypatch):
+    fake = FakeRedis()
+    monkeypatch.setattr("django_ip_safeguard.services.cache.redis.Redis.from_url", lambda *args, **kwargs: fake)
+    cache = RedisCacheService("redis://fake")
+    assert cache.is_rate_limited("1.1.1.1", 0) is False
+    assert cache.is_rate_limited("1.1.1.1", 2) is False
+    assert cache.is_rate_limited("1.1.1.1", 2) is False
+    assert cache.is_rate_limited("1.1.1.1", 2) is True
