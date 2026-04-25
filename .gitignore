@@ -9,5 +9,7 @@ build/
 .DS_Store
 demo_project/.venv/
 demo_project/db.sqlite3
+demo_project/demo_site/db.sqlite3
 frontend-admin/node_modules/*
 *.mo
+geoip2_data/

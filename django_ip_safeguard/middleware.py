@@ -12,7 +12,7 @@ from django_ip_safeguard.services.ip_matcher import first_matching_rule
 from django_ip_safeguard.services.ip_resolver import resolve_client_ip
 from django_ip_safeguard.services.layered_cache import LayeredCacheService
 from django_ip_safeguard.services.provider_factory import build_provider
-from django_ip_safeguard.services.geo_ip_pool_runtime import evaluate_geo_ip_pool_rules
+from django_ip_safeguard.services.geo_ip_pool_runtime import evaluate_geo_ip_pool_rules, infer_country_from_pools
 from django_ip_safeguard.services.policy_service import load_effective_policy
 from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
 from django_ip_safeguard.services.asn_lookup import AsnLookupService
@@ -197,6 +197,13 @@ class IpGuardMiddleware:
             try:
                 ip_intel = self.provider.fetch_ip_intel(client_ip)
                 self.asn_lookup.enrich_ip_intel(ip_intel)
+
+                if not ip_intel.country_code or ip_intel.country_code.upper() == "UNKNOWN":
+                    inferred = infer_country_from_pools(client_ip, self.config, self.cache_service)
+                    if inferred:
+                        ip_intel.country_code = inferred
+                        if inferred == "CN" and not ip_intel.country_name:
+                            ip_intel.country_name = "中国"
 
                 if self.local_risk_engine:
                     local_reasons = self.local_risk_engine.evaluate(client_ip, ip_intel)

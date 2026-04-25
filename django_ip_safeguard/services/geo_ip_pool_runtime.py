@@ -47,6 +47,17 @@ def invalidate_local_geo_pool_cache() -> None:
     _POOL_CACHE.clear()
 
 
+def infer_country_from_pools(
+    client_ip: str, cfg: IpGuardSettings, cache: RedisCacheService
+) -> Optional[str]:
+    """基于地理 IP 池推断国家码。命中中国池返回 'CN'，否则返回 None。"""
+
+    china_payload = get_pool_payload(cache, "china", cfg)
+    if index_has_cidr_data(china_payload) and ip_matches_index(client_ip, china_payload):
+        return "CN"
+    return None
+
+
 def evaluate_geo_ip_pool_rules(
     client_ip: str, cfg: IpGuardSettings, cache: RedisCacheService
 ) -> Optional[str]:
