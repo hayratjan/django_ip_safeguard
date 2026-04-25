@@ -210,6 +210,7 @@ npm run dev
 - Vue：`http://127.0.0.1:5173`
 - Vite 代理：`/ip-guard/*`、`/admin/*`
 - 鉴权：Django Session + CSRF（前端自动携带 `X-CSRFToken`）
+- 仪表盘「国际来源」：ECharts 世界地图热力 + 国家/地区 Top 条形图，数据为接口 `country_distribution`（`country_code` 与 GeoJSON 的 `iso_a2` 对齐）；底图数据包 `@surbowl/world-geo-json-zh`（Unlicense）
 
 ---
 
@@ -376,7 +377,7 @@ python -m twine upload dist/*
 - 数据库审计写入开关
 - 单测与文档基础完善
 - Django 管理 API 企业化（统一响应、分页筛选、错误码）
-- Vue3 + Element Plus 企业控制台（登录、仪表盘多维度统计、完整策略表单含路径级 fail-open/close 与 DB 审计开关、封禁分页与来源筛选、审计分页/路径/日期/导出 CSV、健康详情）
+- Vue3 + Element Plus 企业控制台（登录、仪表盘多维度统计与国际来源 ECharts 地图可视化、完整策略表单含路径级 fail-open/close 与 DB 审计开关、封禁分页与来源筛选、审计分页/路径/日期/导出 CSV、健康详情）
 - Session/CSRF 鉴权联动与前后端联调验证
 
 下一步建议：

@@ -31,6 +31,12 @@
         </el-col>
       </el-row>
       <el-row :gutter="12" style="margin-bottom: 16px">
+        <el-col :span="24">
+          <h4 class="sub">国际来源可视化（24h，按国家/地区）</h4>
+          <DashboardWorldIpMap :distribution="data.country_distribution || []" />
+        </el-col>
+      </el-row>
+      <el-row :gutter="12" style="margin-bottom: 16px">
         <el-col :span="12">
           <h4 class="sub">高风险 IP（拦截 Top10）</h4>
           <el-table :data="data.top_risk_ips || []" size="small">
@@ -39,9 +45,9 @@
           </el-table>
         </el-col>
         <el-col :span="12">
-          <h4 class="sub">国家分布 Top10</h4>
+          <h4 class="sub">国家分布 Top10（明细表）</h4>
           <el-table :data="data.country_distribution || []" size="small">
-            <el-table-column prop="country_code" label="国家" />
+            <el-table-column prop="country_code" label="国家/地区码" />
             <el-table-column prop="count" label="次数" width="100" />
           </el-table>
         </el-col>
@@ -67,8 +73,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref } from "vue";
 import { dashboardApi } from "../api";
+
+const DashboardWorldIpMap = defineAsyncComponent(() => import("../components/DashboardWorldIpMap.vue"));
 
 const data = ref({});
 const loading = ref(false);

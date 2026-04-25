@@ -200,7 +200,7 @@ npm run dev
 ### 已实现页面
 
 - 登录页：`/login`
-- 仪表盘：`/dashboard`
+- 仪表盘：`/dashboard`（含 ECharts 国际来源世界地图 + 国家 Top 条形图）
 - 策略中心：`/policy`
 - 封禁管理：`/ban`
 - 审计日志：`/logs`
