@@ -51,10 +51,10 @@ npm run dev
 | 路由 | 功能 | 依赖权限（典型） |
 |------|------|------------------|
 | `/login` | 登录（Session/JWT 切换） | 无 |
-| `/dashboard` | 运营大盘、世界地图、近期记录 | `view_ipaccesslog` |
+| `/dashboard` | 运营大盘：统计卡片、世界地图热力图、国家柱状图、近期记录（所有元素可点击跳转审计日志） | `view_ipaccesslog` |
 | `/policy` | 策略编辑、地理池状态、同步按钮 | 查看/修改策略权限 |
 | `/ban` | 封禁列表与操作 | `view_ipbanrecord` / `change_ipbanrecord` |
-| `/logs` | 审计分页与 CSV 导出 | `view_ipaccesslog` |
+| `/logs` | 审计分页与 CSV 导出（支持从 Dashboard 跳转自动填充筛选条件） | `view_ipaccesslog` |
 | `/health` | Redis 延迟、熔断、地理池摘要 | `view_ipguardpolicy` |
 
 菜单与路由通过 `authStore.hasPerm` 控制；无权限路由会被重定向到首个可访问页。
@@ -83,10 +83,11 @@ npm run build
 
 | 问题 | 处理 |
 |------|------|
-| POST 403 CSRF | 确认已 GET csrf、Cookie 域一致、反代未剥头 |
+| POST 403 CSRF | 确认已 GET csrf、Cookie 域一致、反代未剥头；Vite 代理需配置 `cookieDomainRewrite: { "*": "" }`；Django 需配置 `CSRF_TRUSTED_ORIGINS` 含前端地址 |
 | JWT 下策略保存 403 | 用户缺少 `change_ipguardpolicy` |
 | 导出 CSV 空/401 | JWT 模式下导出使用独立 axios，需带 Bearer |
 | 地图不显示 | 检查 `country_distribution` 数据与国家 GeoJSON 字段对齐 |
+| Dashboard 点击无跳转 | 确认路由 `/logs` 存在且用户有 `view_ipaccesslog` 权限 |
 
 ---
 
