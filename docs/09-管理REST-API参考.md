@@ -160,7 +160,88 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 
 ---
 
-## 9.9 典型错误码（节选）
+## 9.9 用户管理
+
+### 9.9.1 `GET /ip-guard/api/auth/profile/`
+
+- **权限**：已登录
+- **说明**：返回当前用户信息，包括 `username`、`email`、`is_superuser`、`is_staff`、`two_factor_enabled`、`date_joined`、`last_login`
+
+### 9.9.2 `POST /ip-guard/api/auth/change-password/`
+
+- **权限**：已登录
+- **Body**：`{"old_password": "...", "new_password": "..."}`
+- **校验**：旧密码必须正确；新密码不少于 8 位
+- **说明**：修改成功后需重新登录
+
+### 9.9.3 `POST /ip-guard/api/auth/change-email/`
+
+- **权限**：已登录
+- **Body**：`{"new_email": "user@example.com"}`
+- **校验**：邮箱格式必须合法
+
+### 9.9.4 `GET /ip-guard/api/auth/2fa/status/`
+
+- **权限**：已登录
+- **说明**：返回 `{"enabled": true/false, "has_secret": true/false}`
+
+### 9.9.5 `POST /ip-guard/api/auth/2fa/setup/`
+
+- **权限**：已登录
+- **说明**：生成 TOTP 密钥，返回 `{"secret": "...", "provisioning_uri": "otpauth://totp/..."}`。依赖 `pyotp` 包。
+
+### 9.9.6 `POST /ip-guard/api/auth/2fa/verify/`
+
+- **权限**：已登录
+- **Body**：`{"code": "123456"}`
+- **说明**：验证 TOTP 码并启用 2FA。验证成功后 `two_factor_secret` 写入用户模型。
+
+### 9.9.7 `POST /ip-guard/api/auth/2fa/disable/`
+
+- **权限**：已登录
+- **Body**：`{"code": "123456"}`
+- **说明**：验证 TOTP 码后禁用 2FA，清除密钥。
+
+---
+
+## 9.10 用户统计图表
+
+### 9.10.1 `GET /ip-guard/api/user-stats-chart/`
+
+- **权限**：`django_ip_safeguard.view_ipaccesslog`
+- **Query 参数**：`days`（默认 7，最大 30）
+- **说明**：返回四组图表数据：
+  - `daily_trend`：按日统计 `allow`/`block` 数量
+  - `risk_distribution`：高/中/低风险占比
+  - `hourly_pattern`：24 小时请求和拦截分布
+  - `top_countries`：访问量 Top10 国家
+
+---
+
+## 9.11 系统设置
+
+### 9.11.1 `GET /ip-guard/api/system-settings/`
+
+- **权限**：`view_ipguardpolicy`
+- **说明**：返回当前策略配置和地理池规则
+
+### 9.11.2 `POST /ip-guard/api/system-settings/`
+
+- **权限**：`change_ipguardpolicy`
+- **Body**：JSON，仅提交需修改的字段：
+  - `use_db_log`：布尔，是否启用数据库审计日志
+  - `fail_open`：布尔，全局失败放行
+  - `block_status_code`：整数（400-499），拦截 HTTP 状态码
+  - `rate_limit_per_minute`：整数（0-100000），每分钟请求上限
+  - `risk_score_threshold`：整数（0-100），风险阈值
+  - `cache_ttl`：整数（≥60），情报缓存 TTL（秒）
+  - `ban_ttl`：整数（≥60），封禁 TTL（秒）
+  - `china_pool_rule`：`off`/`allow_only_in_pool`/`block_in_pool`
+  - `international_pool_rule`：`off`/`allow_only_in_pool`/`block_in_pool`
+
+---
+
+## 9.12 典型错误码（节选）
 
 | code | HTTP | 含义（示例） |
 |------|------|----------------|
@@ -175,7 +256,7 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 
 ---
 
-## 9.10 相关文档
+## 9.13 相关文档
 
 - 认证：[10-认证CSRF-JWT与权限模型](./10-认证CSRF-JWT与权限模型.md)  
 - 策略字段：[05-策略中心与数据库模型](./05-策略中心与数据库模型.md)  

@@ -2,7 +2,6 @@ import csv
 import ipaddress
 import json
 import time
-import uuid
 from datetime import datetime, time as dt_time, timedelta
 from functools import wraps
 from typing import Dict, List, Optional, Tuple
@@ -263,8 +262,26 @@ def dashboard_api_view(request: HttpRequest) -> JsonResponse:
     for row in top_risk_ips:
         row["ip"] = mask_ip(row["ip"], cfg.ip_mask_enabled, cfg.ip_mask_keep_prefix)
     country_distribution = list(
-        today_logs.values("country_code").annotate(count=Count("id")).order_by("-count")[:10]
+        today_logs.exclude(country_code="")
+        .exclude(country_code="UNKNOWN")
+        .exclude(country_code="LOCAL")
+        .values("country_code")
+        .annotate(
+            count=Count("id"),
+            blocked=Count("id", filter=Q(decision="block")),
+            allowed=Count("id", filter=Q(decision="allow")),
+        )
+        .order_by("-count")[:30]
     )
+    country_name_map = dict(
+        today_logs.exclude(country_code="")
+        .exclude(country_code="UNKNOWN")
+        .exclude(country_code="LOCAL")
+        .values_list("country_code", "country_name")
+        .distinct()
+    )
+    for row in country_distribution:
+        row["country_name"] = country_name_map.get(row["country_code"], row["country_code"])
     decision_rows = today_logs.values("decision").annotate(c=Count("id"))
     decision_distribution = {row["decision"]: row["c"] for row in decision_rows}
     block_rate = round(blocked_count / total_count, 4) if total_count else 0.0
@@ -1007,8 +1024,6 @@ def user_profile_view(request: HttpRequest) -> JsonResponse:
 @api_permission_required("django_ip_safeguard.view_ipaccesslog")
 @require_GET
 def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
-    from django.db.models import Count, Sum
-    from django.db.models.functions import TruncDate
     days = _get_days_param(request, default=7, max_days=30)
     since = timezone.now() - timedelta(days=days)
 
@@ -1090,7 +1105,6 @@ def system_settings_view(request: HttpRequest) -> JsonResponse:
 
     policy, _created = IpGuardPolicy.objects.get_or_create(name="default")
     mapping = {
-        "ip_mask_enabled": "use_db_log",
         "use_db_log": "use_db_log",
         "fail_open": "fail_open",
         "block_status_code": "block_status_code",

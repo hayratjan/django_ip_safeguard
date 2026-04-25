@@ -13,6 +13,9 @@ const routes = [
       { path: "ban", component: () => import("../views/BanManagementView.vue"), meta: { perm: "django_ip_safeguard.view_ipbanrecord" } },
       { path: "logs", component: () => import("../views/AccessLogsView.vue"), meta: { perm: "django_ip_safeguard.view_ipaccesslog" } },
       { path: "health", component: () => import("../views/HealthView.vue"), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
+      { path: "user-settings", component: () => import("../views/UserSettingsView.vue") },
+      { path: "user-chart", component: () => import("../views/UserChartView.vue"), meta: { perm: "django_ip_safeguard.view_ipaccesslog" } },
+      { path: "system-settings", component: () => import("../views/SystemSettingsView.vue"), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
     ],
   },
 ];
@@ -33,7 +36,7 @@ router.beforeEach(async (to) => {
   if (!store.user) {
     return "/login";
   }
-  const fallbackRoutes = ["/dashboard", "/policy", "/ban", "/logs", "/health"];
+  const fallbackRoutes = ["/dashboard", "/policy", "/ban", "/logs", "/health", "/user-settings"];
   const firstAllowed = fallbackRoutes.find((path) => {
     const route = routes[1].children.find((r) => `/${r.path}` === path);
     if (!route?.meta?.perm) return true;
