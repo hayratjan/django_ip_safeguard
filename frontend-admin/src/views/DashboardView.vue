@@ -72,8 +72,19 @@
               <el-button text size="small" @click="goLogs()">查看全部 →</el-button>
             </div>
             <el-table :data="data.country_distribution || []" size="small" class="clickable-table" @row-click="onCountryRowClick">
-              <el-table-column prop="country_code" :label="t('dashboard.countryCode')" />
-              <el-table-column prop="count" :label="t('dashboard.count')" width="100" />
+              <el-table-column prop="country_code" :label="t('dashboard.countryCode')" width="70" />
+              <el-table-column prop="country_name" label="国家" show-overflow-tooltip />
+              <el-table-column prop="count" label="总量" width="70" />
+              <el-table-column prop="blocked" label="攻击" width="70">
+                <template #default="{ row }">
+                  <span :style="{ color: row.blocked > 0 ? '#ef4444' : '#94a3b8', fontWeight: row.blocked > 0 ? '600' : '400' }">{{ row.blocked || 0 }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="allowed" label="允许" width="70">
+                <template #default="{ row }">
+                  <span style="color: #22c55e">{{ row.allowed || 0 }}</span>
+                </template>
+              </el-table-column>
             </el-table>
           </div>
         </el-col>

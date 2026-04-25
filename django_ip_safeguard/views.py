@@ -20,8 +20,8 @@ from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
 from django_ip_safeguard.conf import get_settings
-from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy
-from django_ip_safeguard.services.audit_service import mask_ip
+from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy, UserProfile
+from django_ip_safeguard.services.audit_service import log_access_decision, mask_ip
 from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.jwt_service import (
     get_user_from_access_token,
@@ -43,6 +43,39 @@ def _load_json_body(request: HttpRequest) -> dict:
     if not raw:
         return {}
     return json.loads(raw)
+
+
+def _get_client_ip(request: HttpRequest) -> str:
+    xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "0.0.0.0")
+
+
+def _log_security_audit(request: HttpRequest, action: str, detail: str = "", user=None) -> None:
+    try:
+        from django_ip_safeguard.models import IpAccessLog
+        ip = _get_client_ip(request)
+        IpAccessLog.objects.create(
+            ip=ip,
+            country_code="",
+            country_name="",
+            region="",
+            city="",
+            asn=0,
+            asn_org="",
+            is_datacenter=False,
+            is_proxy=False,
+            is_vpn=False,
+            is_tor=False,
+            risk_score=0,
+            risk_tags="",
+            decision="security_audit",
+            reason=f"[{action}] {detail}"[:255],
+            path=f"/security-audit/{action}"[:255],
+        )
+    except Exception:
+        pass
 
 
 def api_success(data=None, message: str = "ok", code: int = 0, status: int = 200) -> JsonResponse:
@@ -91,6 +124,11 @@ def _resolve_request_user(request: HttpRequest):
     if user is not None:
         request.user = user
     return request.user
+
+
+def _get_user_profile(user) -> UserProfile:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    return profile
 
 
 def _get_int_param(request: HttpRequest, name: str, default: int, min_value: int = 1, max_value: int = 200) -> int:
@@ -742,6 +780,7 @@ def geo_pools_sync_view(request: HttpRequest) -> JsonResponse:
 @require_GET
 def auth_me_view(request: HttpRequest) -> JsonResponse:
     user = _resolve_request_user(request)
+    profile = _get_user_profile(user) if user.is_authenticated else None
     return api_success(
         {
             "username": user.username,
@@ -749,6 +788,8 @@ def auth_me_view(request: HttpRequest) -> JsonResponse:
             "is_superuser": user.is_superuser,
             "groups": list(user.groups.values_list("name", flat=True)),
             "permissions": sorted(user.get_all_permissions()),
+            "language": profile.language if profile else "zh-hans",
+            "two_factor_enabled": profile.two_factor_enabled if profile else False,
         }
     )
 
@@ -777,6 +818,10 @@ def login_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("用户名或密码错误"), code=4004, status=401)
     if not user.is_staff:
         return api_error(_("该账号无后台权限"), code=4030, status=403)
+    if _get_user_profile(user).two_factor_enabled:
+        request.session["2fa_pending_user_id"] = user.id
+        request.session["2fa_pending_ts"] = time.time()
+        return api_success({"2fa_required": True, "username": user.username}, message=_("需要双因素认证验证"))
     login(request, user)
     return api_success({"username": user.username}, message=_("登录成功"))
 
@@ -797,7 +842,57 @@ def jwt_login_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("用户名或密码错误"), code=4004, status=401)
     if not user.is_staff:
         return api_error(_("该账号无后台权限"), code=4030, status=403)
+    if _get_user_profile(user).two_factor_enabled:
+        request.session["2fa_pending_user_id"] = user.id
+        request.session["2fa_pending_ts"] = time.time()
+        return api_success({"2fa_required": True, "username": user.username}, message=_("需要双因素认证验证"))
     return api_success(issue_token_pair(user), message=_("JWT 登录成功"))
+
+
+@csrf_protect
+@require_http_methods(["POST"])
+def two_factor_login_verify_view(request: HttpRequest) -> JsonResponse:
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    code = str(payload.get("code", "")).strip()
+    if not code:
+        return api_error(_("验证码不能为空"), code=4002, status=400)
+    pending_id = request.session.get("2fa_pending_user_id")
+    pending_ts = request.session.get("2fa_pending_ts")
+    if not pending_id or not pending_ts:
+        return api_error(_("请先完成用户名密码登录"), code=4010, status=401)
+    if time.time() - pending_ts > 300:
+        request.session.pop("2fa_pending_user_id", None)
+        request.session.pop("2fa_pending_ts", None)
+        return api_error(_("2FA 验证已超时，请重新登录"), code=4010, status=401)
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        user = User.objects.get(pk=pending_id)
+    except User.DoesNotExist:
+        return api_error(_("用户不存在"), code=4010, status=401)
+    profile = _get_user_profile(user)
+    if not profile.two_factor_enabled:
+        return api_error(_("该用户未启用 2FA"), code=4008, status=400)
+    try:
+        import pyotp
+    except ImportError:
+        return api_error(_("2FA 功能未安装 pyotp 依赖"), code=5001, status=500)
+    secret = profile.two_factor_secret
+    if not secret:
+        return api_error(_("2FA 密钥未设置"), code=4008, status=400)
+    totp = pyotp.totp.TOTP(secret)
+    if not totp.verify(code, valid_window=1):
+        return api_error(_("验证码不正确"), code=4004, status=400)
+    request.session.pop("2fa_pending_user_id", None)
+    request.session.pop("2fa_pending_ts", None)
+    login_mode = str(payload.get("login_mode", "session")).strip().lower()
+    if login_mode == "jwt":
+        return api_success(issue_token_pair(user), message=_("2FA 验证成功，JWT 登录成功"))
+    login(request, user)
+    return api_success({"username": user.username}, message=_("2FA 验证成功，登录成功"))
 
 
 @require_http_methods(["POST"])
@@ -856,6 +951,11 @@ def i18n_lang_switch_view(request: HttpRequest) -> JsonResponse:
     activate(lang_code)
     if hasattr(request, "session") and request.session.session_key:
         request.session[settings.LANGUAGE_SESSION_KEY] = lang_code
+    user = _resolve_request_user(request)
+    if user.is_authenticated:
+        profile = _get_user_profile(user)
+        profile.language = lang_code
+        profile.save(update_fields=["language"])
     response = api_success({"language": lang_code}, message=_("语言已切换"))
     response.set_cookie(settings.LANGUAGE_COOKIE_NAME, lang_code, max_age=settings.LANGUAGE_COOKIE_AGE)
     return response
@@ -878,10 +978,18 @@ def change_password_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("旧密码和新密码不能为空"), code=4002, status=400)
     if len(new_password) < 8:
         return api_error(_("新密码长度不能少于8位"), code=4002, status=400)
+    has_upper = any(c.isupper() for c in new_password)
+    has_lower = any(c.islower() for c in new_password)
+    has_digit = any(c.isdigit() for c in new_password)
+    has_special = any(not c.isalnum() for c in new_password)
+    complexity_count = sum([has_upper, has_lower, has_digit, has_special])
+    if complexity_count < 3:
+        return api_error(_("新密码需包含大写字母、小写字母、数字、特殊字符中的至少3种"), code=4002, status=400)
     if not user.check_password(old_password):
         return api_error(_("旧密码不正确"), code=4004, status=400)
     user.set_password(new_password)
     user.save(update_fields=["password"])
+    _log_security_audit(request, "password_change", f"user={user.username}", user)
     return api_success(message=_("密码修改成功"))
 
 
@@ -907,6 +1015,7 @@ def change_email_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("邮箱格式不正确"), code=4002, status=400)
     user.email = new_email
     user.save(update_fields=["email"])
+    _log_security_audit(request, "email_change", f"user={user.username} email={new_email}", user)
     return api_success({"email": new_email}, message=_("邮箱修改成功"))
 
 
@@ -917,8 +1026,8 @@ def two_factor_status_view(request: HttpRequest) -> JsonResponse:
     user = _resolve_request_user(request)
     if not user.is_authenticated:
         return api_error(_("未登录"), code=4010, status=401)
-    enabled = bool(getattr(user, "two_factor_enabled", False))
-    return api_success({"enabled": enabled})
+    profile = _get_user_profile(user)
+    return api_success({"enabled": profile.two_factor_enabled})
 
 
 @csrf_protect
@@ -933,9 +1042,10 @@ def two_factor_setup_view(request: HttpRequest) -> JsonResponse:
     except ImportError:
         return api_error(_("2FA 功能未安装 pyotp 依赖"), code=5001, status=500)
     secret = pyotp.random_base32()
-    user.two_factor_secret = secret
-    user.two_factor_enabled = False
-    user.save(update_fields=["two_factor_secret", "two_factor_enabled"])
+    profile = _get_user_profile(user)
+    profile.two_factor_secret = secret
+    profile.two_factor_enabled = False
+    profile.save(update_fields=["two_factor_secret", "two_factor_enabled"])
     provisioning_uri = pyotp.totp.TOTP(secret).provisioning_uri(
         name=user.email or user.username, issuer_name="IP Guard"
     )
@@ -960,14 +1070,16 @@ def two_factor_verify_view(request: HttpRequest) -> JsonResponse:
         import pyotp
     except ImportError:
         return api_error(_("2FA 功能未安装 pyotp 依赖"), code=5001, status=500)
-    secret = getattr(user, "two_factor_secret", "")
+    profile = _get_user_profile(user)
+    secret = profile.two_factor_secret
     if not secret:
         return api_error(_("请先设置 2FA"), code=4008, status=400)
     totp = pyotp.totp.TOTP(secret)
     if not totp.verify(code, valid_window=1):
         return api_error(_("验证码不正确"), code=4004, status=400)
-    user.two_factor_enabled = True
-    user.save(update_fields=["two_factor_enabled"])
+    profile.two_factor_enabled = True
+    profile.save(update_fields=["two_factor_enabled"])
+    _log_security_audit(request, "2fa_enable", f"user={user.username}", user)
     return api_success(message=_("2FA 已启用"))
 
 
@@ -989,14 +1101,16 @@ def two_factor_disable_view(request: HttpRequest) -> JsonResponse:
         import pyotp
     except ImportError:
         return api_error(_("2FA 功能未安装 pyotp 依赖"), code=5001, status=500)
-    secret = getattr(user, "two_factor_secret", "")
+    profile = _get_user_profile(user)
+    secret = profile.two_factor_secret
     if secret:
         totp = pyotp.totp.TOTP(secret)
         if not totp.verify(code, valid_window=1):
             return api_error(_("验证码不正确"), code=4004, status=400)
-    user.two_factor_secret = ""
-    user.two_factor_enabled = False
-    user.save(update_fields=["two_factor_secret", "two_factor_enabled"])
+    profile.two_factor_secret = ""
+    profile.two_factor_enabled = False
+    profile.save(update_fields=["two_factor_secret", "two_factor_enabled"])
+    _log_security_audit(request, "2fa_disable", f"user={user.username}", user)
     return api_success(message=_("2FA 已禁用"))
 
 
@@ -1014,7 +1128,7 @@ def user_profile_view(request: HttpRequest) -> JsonResponse:
         "last_name": getattr(user, "last_name", ""),
         "is_staff": user.is_staff,
         "is_superuser": user.is_superuser,
-        "two_factor_enabled": bool(getattr(user, "two_factor_enabled", False)),
+        "two_factor_enabled": _get_user_profile(user).two_factor_enabled,
         "date_joined": user.date_joined.isoformat() if hasattr(user, "date_joined") and user.date_joined else None,
         "last_login": user.last_login.isoformat() if hasattr(user, "last_login") and user.last_login else None,
     })
@@ -1025,6 +1139,15 @@ def user_profile_view(request: HttpRequest) -> JsonResponse:
 @require_GET
 def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
     days = _get_days_param(request, default=7, max_days=30)
+    cache_key = f"chart:stats:{days}"
+    try:
+        cache_svc = RedisCacheService()
+        cached = cache_svc.get(cache_key)
+        if cached is not None:
+            return api_success(cached)
+    except Exception:
+        pass
+
     since = timezone.now() - timedelta(days=days)
 
     daily_stats = list(
@@ -1068,13 +1191,21 @@ def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
         .order_by("hour")
     )
 
-    return api_success({
+    result = {
         "daily_stats": daily_stats,
         "risk_distribution": risk_distribution,
         "top_countries": top_countries,
         "hourly_pattern": hourly_pattern,
         "days": days,
-    })
+    }
+
+    try:
+        cache_svc = RedisCacheService()
+        cache_svc.set(cache_key, result, timeout=300)
+    except Exception:
+        pass
+
+    return api_success(result)
 
 
 @csrf_protect
