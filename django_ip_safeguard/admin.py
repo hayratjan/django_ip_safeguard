@@ -9,6 +9,7 @@ from django_ip_safeguard.models import (
     IpGuardPolicy,
     IpReputationHistory,
     ThreatIntelFeedStatus,
+    UserProfile,
 )
 from django_ip_safeguard.services.policy_service import invalidate_policy_cache
 
@@ -118,3 +119,12 @@ class ThreatIntelFeedStatusAdmin(ModelAdmin):
     list_filter = ("enabled", "auto_ban", "threat_type")
     list_filter_submit = True
     readonly_fields = ("entry_count", "auto_ban_count", "last_ok_at", "last_error", "created_at", "updated_at")
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(ModelAdmin):
+    list_display = ("user", "two_factor_enabled", "two_factor_secret")
+    search_fields = ("user__username", "user__email")
+    list_filter = ("two_factor_enabled",)
+    list_filter_submit = True
+    readonly_fields = ("two_factor_secret",)

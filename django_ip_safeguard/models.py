@@ -1,5 +1,26 @@
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+
+
+class UserProfile(models.Model):
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ip_safeguard_profile",
+        verbose_name=_("用户"),
+    )
+    two_factor_secret = models.CharField(_("2FA密钥"), max_length=64, blank=True, default="")
+    two_factor_enabled = models.BooleanField(_("2FA已启用"), default=False)
+    language = models.CharField(_("界面语言"), max_length=10, blank=True, default="zh-hans")
+
+    class Meta:
+        verbose_name = _("用户安全配置")
+        verbose_name_plural = _("用户安全配置")
+
+    def __str__(self):
+        return f"Profile({self.user.username})"
 
 
 class IpGuardPolicy(models.Model):
