@@ -10,9 +10,18 @@ export const jwtLogoutApi = () => http.post("/auth/jwt/logout/");
 export const logoutApi = () => http.post("/auth/logout/");
 export const meApi = () => http.get("/auth/me/");
 
+export const changePasswordApi = (payload) => http.post("/auth/change-password/", payload);
+export const changeEmailApi = (payload) => http.post("/auth/change-email/", payload);
+export const userProfileApi = () => http.get("/auth/profile/");
+export const twoFactorStatusApi = () => http.get("/auth/2fa/status/");
+export const twoFactorSetupApi = () => http.post("/auth/2fa/setup/");
+export const twoFactorVerifyApi = (payload) => http.post("/auth/2fa/verify/", payload);
+export const twoFactorDisableApi = (payload) => http.post("/auth/2fa/disable/", payload);
+
 export const dashboardApi = () => http.get("/dashboard/");
 export const recentRecordsApi = (params) => http.get("/recent-records/", { params });
 export const healthApi = () => http.get("/health/");
+export const userStatsChartApi = (params) => http.get("/user-stats-chart/", { params });
 
 export const getPolicyApi = () => http.get("/policy/");
 export const updatePolicyApi = (payload) => http.post("/policy/", payload);
@@ -28,3 +37,6 @@ export const getAccessLogsApi = (params) => http.get("/access-logs/", { params }
 
 export const i18nLangListApi = () => http.get("/i18n/languages/");
 export const i18nLangSwitchApi = (payload) => http.post("/i18n/switch/", payload);
+
+export const getSystemSettingsApi = () => http.get("/system-settings/");
+export const updateSystemSettingsApi = (payload) => http.post("/system-settings/", payload);

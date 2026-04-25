@@ -2,6 +2,7 @@ import csv
 import ipaddress
 import json
 import time
+import uuid
 from datetime import datetime, time as dt_time, timedelta
 from functools import wraps
 from typing import Dict, List, Optional, Tuple
@@ -841,3 +842,289 @@ def i18n_lang_switch_view(request: HttpRequest) -> JsonResponse:
     response = api_success({"language": lang_code}, message=_("语言已切换"))
     response.set_cookie(settings.LANGUAGE_COOKIE_NAME, lang_code, max_age=settings.LANGUAGE_COOKIE_AGE)
     return response
+
+
+@csrf_protect
+@api_permission_required()
+@require_http_methods(["POST"])
+def change_password_view(request: HttpRequest) -> JsonResponse:
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    old_password = str(payload.get("old_password", ""))
+    new_password = str(payload.get("new_password", ""))
+    if not old_password or not new_password:
+        return api_error(_("旧密码和新密码不能为空"), code=4002, status=400)
+    if len(new_password) < 8:
+        return api_error(_("新密码长度不能少于8位"), code=4002, status=400)
+    if not user.check_password(old_password):
+        return api_error(_("旧密码不正确"), code=4004, status=400)
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    return api_success(message=_("密码修改成功"))
+
+
+@csrf_protect
+@api_permission_required()
+@require_http_methods(["POST"])
+def change_email_view(request: HttpRequest) -> JsonResponse:
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    new_email = str(payload.get("email", "")).strip()
+    if not new_email:
+        return api_error(_("邮箱不能为空"), code=4002, status=400)
+    from django.core.validators import validate_email
+    from django.core.exceptions import ValidationError as DjangoValidationError
+    try:
+        validate_email(new_email)
+    except DjangoValidationError:
+        return api_error(_("邮箱格式不正确"), code=4002, status=400)
+    user.email = new_email
+    user.save(update_fields=["email"])
+    return api_success({"email": new_email}, message=_("邮箱修改成功"))
+
+
+@csrf_protect
+@api_permission_required()
+@require_GET
+def two_factor_status_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    enabled = bool(getattr(user, "two_factor_enabled", False))
+    return api_success({"enabled": enabled})
+
+
+@csrf_protect
+@api_permission_required()
+@require_http_methods(["POST"])
+def two_factor_setup_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    try:
+        import pyotp
+    except ImportError:
+        return api_error(_("2FA 功能未安装 pyotp 依赖"), code=5001, status=500)
+    secret = pyotp.random_base32()
+    user.two_factor_secret = secret
+    user.two_factor_enabled = False
+    user.save(update_fields=["two_factor_secret", "two_factor_enabled"])
+    provisioning_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+        name=user.email or user.username, issuer_name="IP Guard"
+    )
+    return api_success({"secret": secret, "provisioning_uri": provisioning_uri})
+
+
+@csrf_protect
+@api_permission_required()
+@require_http_methods(["POST"])
+def two_factor_verify_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    code = str(payload.get("code", "")).strip()
+    if not code:
+        return api_error(_("验证码不能为空"), code=4002, status=400)
+    try:
+        import pyotp
+    except ImportError:
+        return api_error(_("2FA 功能未安装 pyotp 依赖"), code=5001, status=500)
+    secret = getattr(user, "two_factor_secret", "")
+    if not secret:
+        return api_error(_("请先设置 2FA"), code=4008, status=400)
+    totp = pyotp.totp.TOTP(secret)
+    if not totp.verify(code, valid_window=1):
+        return api_error(_("验证码不正确"), code=4004, status=400)
+    user.two_factor_enabled = True
+    user.save(update_fields=["two_factor_enabled"])
+    return api_success(message=_("2FA 已启用"))
+
+
+@csrf_protect
+@api_permission_required()
+@require_http_methods(["POST"])
+def two_factor_disable_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    code = str(payload.get("code", "")).strip()
+    if not code:
+        return api_error(_("验证码不能为空"), code=4002, status=400)
+    try:
+        import pyotp
+    except ImportError:
+        return api_error(_("2FA 功能未安装 pyotp 依赖"), code=5001, status=500)
+    secret = getattr(user, "two_factor_secret", "")
+    if secret:
+        totp = pyotp.totp.TOTP(secret)
+        if not totp.verify(code, valid_window=1):
+            return api_error(_("验证码不正确"), code=4004, status=400)
+    user.two_factor_secret = ""
+    user.two_factor_enabled = False
+    user.save(update_fields=["two_factor_secret", "two_factor_enabled"])
+    return api_success(message=_("2FA 已禁用"))
+
+
+@csrf_protect
+@api_permission_required()
+@require_GET
+def user_profile_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    return api_success({
+        "username": user.username,
+        "email": user.email or "",
+        "first_name": getattr(user, "first_name", ""),
+        "last_name": getattr(user, "last_name", ""),
+        "is_staff": user.is_staff,
+        "is_superuser": user.is_superuser,
+        "two_factor_enabled": bool(getattr(user, "two_factor_enabled", False)),
+        "date_joined": user.date_joined.isoformat() if hasattr(user, "date_joined") and user.date_joined else None,
+        "last_login": user.last_login.isoformat() if hasattr(user, "last_login") and user.last_login else None,
+    })
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipaccesslog")
+@require_GET
+def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
+    from django.db.models import Count, Sum
+    from django.db.models.functions import TruncDate
+    days = _get_days_param(request, default=7, max_days=30)
+    since = timezone.now() - timedelta(days=days)
+
+    daily_stats = list(
+        IpAccessLog.objects.filter(created_at__gte=since)
+        .annotate(date=TruncDate("created_at"))
+        .values("date")
+        .annotate(
+            total=Count("id"),
+            blocked=Count("id", filter=Q(decision="block")),
+            allowed=Count("id", filter=Q(decision="allow")),
+        )
+        .order_by("date")
+    )
+    for row in daily_stats:
+        if row.get("date"):
+            row["date"] = row["date"].isoformat()
+
+    risk_distribution = list(
+        IpAccessLog.objects.filter(created_at__gte=since)
+        .extra(select={"risk_level": "CASE WHEN risk_score >= 70 THEN 'high' WHEN risk_score >= 40 THEN 'medium' ELSE 'low' END"})
+        .values("risk_level")
+        .annotate(count=Count("id"))
+        .order_by("risk_level")
+    )
+
+    top_countries = list(
+        IpAccessLog.objects.filter(created_at__gte=since)
+        .values("country_code")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:10]
+    )
+
+    hourly_pattern = list(
+        IpAccessLog.objects.filter(created_at__gte=since)
+        .extra(select={"hour": "EXTRACT(HOUR FROM created_at)"})
+        .values("hour")
+        .annotate(
+            total=Count("id"),
+            blocked=Count("id", filter=Q(decision="block")),
+        )
+        .order_by("hour")
+    )
+
+    return api_success({
+        "daily_stats": daily_stats,
+        "risk_distribution": risk_distribution,
+        "top_countries": top_countries,
+        "hourly_pattern": hourly_pattern,
+        "days": days,
+    })
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipguardpolicy")
+@require_http_methods(["GET", "POST"])
+def system_settings_view(request: HttpRequest) -> JsonResponse:
+    if request.method == "GET":
+        cfg = get_settings()
+        return api_success({
+            "ip_mask_enabled": cfg.ip_mask_enabled,
+            "ip_mask_keep_prefix": cfg.ip_mask_keep_prefix,
+            "use_db_log": cfg.use_db_log,
+            "fail_open": cfg.fail_open,
+            "block_status_code": cfg.block_status_code,
+            "rate_limit_per_minute": cfg.rate_limit_per_minute,
+            "risk_score_threshold": cfg.risk_score_threshold,
+            "cache_ttl": cfg.cache_ttl,
+            "ban_ttl": cfg.ban_ttl,
+            "provider": cfg.provider,
+            "china_pool_rule": cfg.china_pool_rule,
+            "international_pool_rule": cfg.international_pool_rule,
+        })
+
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+
+    policy, _created = IpGuardPolicy.objects.get_or_create(name="default")
+    mapping = {
+        "ip_mask_enabled": "use_db_log",
+        "use_db_log": "use_db_log",
+        "fail_open": "fail_open",
+        "block_status_code": "block_status_code",
+        "rate_limit_per_minute": "rate_limit_per_minute",
+        "risk_score_threshold": "risk_score_threshold",
+        "cache_ttl": "cache_ttl",
+        "ban_ttl": "ban_ttl",
+        "china_pool_rule": "china_pool_rule",
+        "international_pool_rule": "international_pool_rule",
+    }
+    for api_key, model_key in mapping.items():
+        if api_key in payload:
+            val = payload[api_key]
+            if api_key in ("china_pool_rule", "international_pool_rule"):
+                val = str(val).strip().lower()
+                if val not in GEO_POOL_RULE_CHOICES:
+                    continue
+            elif api_key == "block_status_code":
+                val = int(val)
+                if val < 400 or val > 499:
+                    continue
+            elif api_key == "rate_limit_per_minute":
+                val = int(val)
+                if val < 0 or val > 100000:
+                    continue
+            elif api_key == "risk_score_threshold":
+                val = int(val)
+                if val < 0 or val > 100:
+                    continue
+            elif api_key in ("cache_ttl", "ban_ttl"):
+                val = int(val)
+                if val < 60:
+                    continue
+            setattr(policy, model_key, val)
+    policy.save()
+    invalidate_policy_cache()
+    return api_success(message=_("系统设置已更新"))

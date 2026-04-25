@@ -16,8 +16,6 @@ def log_access_decision(
     ip_mask_enabled: bool = True,
     ip_mask_keep_prefix: int = 2,
 ) -> None:
-    """按开关记录访问决策到数据库。始终存储完整 IP，脱敏在展示层按配置执行。"""
-
     if not enabled:
         return
     try:
@@ -26,23 +24,29 @@ def log_access_decision(
         IpAccessLog.objects.create(
             ip=ip,
             country_code=(ip_intel.country_code or "")[:16],
+            country_name=(ip_intel.country_name or "")[:64],
+            region=(ip_intel.region or "")[:64],
+            city=(ip_intel.city or "")[:64],
+            asn=ip_intel.asn,
+            asn_org=(ip_intel.asn_org or "")[:128],
+            is_datacenter=ip_intel.is_datacenter,
+            is_proxy=ip_intel.is_proxy,
+            is_vpn=ip_intel.is_vpn,
+            is_tor=ip_intel.is_tor,
             risk_score=ip_intel.risk_score,
             risk_tags=ip_intel.risk_tags,
             decision=decision,
             reason=reason[:255],
             path=path[:255],
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("写入 IP 审计日志失败: %s", exc)
 
 
 def mask_ip(ip: str, enabled: bool, keep_prefix: int) -> str:
-    """按配置掩码处理 IP，降低敏感数据暴露风险。"""
-
     if not enabled:
         return ip
     if ":" in ip:
-        # IPv6 仅保留前 keep_prefix 段
         parts = ip.split(":")
         keep = max(1, min(len(parts), keep_prefix))
         return ":".join(parts[:keep] + ["****"])
