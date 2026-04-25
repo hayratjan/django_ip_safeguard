@@ -1,0 +1,85 @@
+html.dark {
+  --ip-bg: #141414;
+  --ip-bg-card: #1d1d1d;
+  --ip-bg-card-hover: #262626;
+  --ip-text: #e5eaf3;
+  --ip-text-secondary: #a3a6ad;
+  --ip-border: #4c4d4f;
+  --ip-shadow: rgba(0, 0, 0, 0.5);
+}
+
+html:not(.dark) {
+  --ip-bg: #f5f7fa;
+  --ip-bg-card: #ffffff;
+  --ip-bg-card-hover: #f5f7fa;
+  --ip-text: #303133;
+  --ip-text-secondary: #909399;
+  --ip-border: #dcdfe6;
+  --ip-shadow: rgba(0, 0, 0, 0.06);
+}
+
+html:not(.dark) .app-layout .sidebar {
+  background: #ffffff;
+}
+
+html:not(.dark) .app-layout .sidebar .el-menu {
+  --el-menu-bg-color: #ffffff;
+  border-right: none;
+}
+
+html.dark body {
+  background-color: var(--ip-bg);
+  color: var(--ip-text);
+}
+
+html.dark .page-card {
+  background: var(--ip-bg-card);
+  border: 1px solid var(--ip-border);
+}
+
+html.dark .el-card {
+  background: var(--ip-bg-card);
+  border-color: var(--ip-border);
+}
+
+html.dark .el-table {
+  --el-table-bg-color: var(--ip-bg-card);
+  --el-table-tr-bg-color: var(--ip-bg-card);
+  --el-table-header-bg-color: #262626;
+  --el-table-row-hover-bg-color: var(--ip-bg-card-hover);
+  --el-table-border-color: var(--ip-border);
+}
+
+html.dark .el-descriptions {
+  --el-descriptions-table-border: var(--ip-border);
+}
+
+html.dark .el-form-item__label {
+  color: var(--ip-text-secondary);
+}
+
+html.dark .app-layout .sidebar {
+  background: #1d1e22;
+  border-color: var(--ip-border);
+}
+
+html.dark .app-layout .sidebar .el-menu {
+  --el-menu-bg-color: #1d1e22;
+  --el-menu-text-color: #cfd3dc;
+  --el-menu-active-color: var(--el-color-primary);
+  --el-menu-hover-bg-color: #262727;
+  border-right: none;
+}
+
+html.dark .app-layout .sidebar .sidebar-logo:hover {
+  background: #262727;
+}
+
+html.dark .app-layout .header {
+  background: var(--ip-bg-card);
+  border-color: var(--ip-border);
+}
+
+html.dark .app-layout .main-content {
+  background: var(--ip-bg);
+}
