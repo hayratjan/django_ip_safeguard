@@ -27,6 +27,18 @@
           </el-form-item>
           <el-form-item :label="t('userSettings.newPassword')" prop="new_password">
             <el-input v-model="passwordForm.new_password" type="password" show-password />
+            <div v-if="passwordForm.new_password" style="margin-top: 8px">
+              <div style="display: flex; gap: 4px; margin-bottom: 4px">
+                <div v-for="i in 4" :key="i" :style="{
+                  flex: 1,
+                  height: '4px',
+                  borderRadius: '2px',
+                  background: i <= passwordStrength.level ? passwordStrength.color : '#e4e7ed',
+                  transition: 'background 0.3s',
+                }" />
+              </div>
+              <span :style="{ color: passwordStrength.color, fontSize: '12px' }">{{ passwordStrength.label }}</span>
+            </div>
           </el-form-item>
           <el-form-item :label="t('userSettings.confirmPassword')" prop="confirm_password">
             <el-input v-model="passwordForm.confirm_password" type="password" show-password />
@@ -162,6 +174,24 @@ const emailForm = reactive({
 
 const verifyForm = reactive({ code: "" });
 const disableForm = reactive({ code: "" });
+
+const passwordStrength = computed(() => {
+  const pw = passwordForm.new_password;
+  if (!pw) return { level: 0, color: "#e4e7ed", label: "" };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^a-zA-Z0-9]/.test(pw)) score++;
+  const levels = [
+    { level: 0, color: "#f56c6c", label: t("userSettings.veryWeak") },
+    { level: 1, color: "#f56c6c", label: t("userSettings.weak") },
+    { level: 2, color: "#e6a23c", label: t("userSettings.medium") },
+    { level: 3, color: "#67c23a", label: t("userSettings.strong") },
+    { level: 4, color: "#409eff", label: t("userSettings.veryStrong") },
+  ];
+  return levels[score] || levels[0];
+});
 
 const validateConfirmPassword = (_rule, value, callback) => {
   if (value !== passwordForm.new_password) {

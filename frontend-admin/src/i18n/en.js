@@ -52,6 +52,9 @@ export default {
     submit: "Login",
     sessionMode: "Session",
     jwtMode: "JWT",
+    twoFARequired: "Two-Factor Authentication Required",
+    twoFAHint: "This account has 2FA enabled. Please enter the 6-digit code from your authenticator app.",
+    twoFASubmit: "Verify & Login",
     footNote:
       "Requires Django Staff permission and corresponding feature permissions. Session mode uses server-side sessions with CSRF. JWT mode stores access/refresh tokens locally and sends Bearer in request headers.",
   },
@@ -261,6 +264,12 @@ export default {
     passwordMismatch: "Passwords do not match",
     emailRequired: "Please enter email",
     emailInvalid: "Invalid email format",
+    veryWeak: "Very Weak",
+    weak: "Weak",
+    medium: "Medium",
+    strong: "Strong",
+    veryStrong: "Very Strong",
+    passwordComplexity: "Must contain at least 3 of: uppercase, lowercase, digits, special characters",
   },
   systemSettings: {
     title: "System Settings",

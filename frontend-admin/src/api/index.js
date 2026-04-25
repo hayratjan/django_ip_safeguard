@@ -17,6 +17,7 @@ export const twoFactorStatusApi = () => http.get("/auth/2fa/status/");
 export const twoFactorSetupApi = () => http.post("/auth/2fa/setup/");
 export const twoFactorVerifyApi = (payload) => http.post("/auth/2fa/verify/", payload);
 export const twoFactorDisableApi = (payload) => http.post("/auth/2fa/disable/", payload);
+export const twoFactorLoginVerifyApi = (payload) => http.post("/auth/2fa/login-verify/", payload);
 
 export const dashboardApi = () => http.get("/dashboard/");
 export const recentRecordsApi = (params) => http.get("/recent-records/", { params });

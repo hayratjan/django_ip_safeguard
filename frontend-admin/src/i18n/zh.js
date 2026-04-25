@@ -52,6 +52,9 @@ export default {
     submit: "登录",
     sessionMode: "Session",
     jwtMode: "JWT",
+    twoFARequired: "需要双因素认证",
+    twoFAHint: "该账号已启用双因素认证，请输入认证器应用中的6位验证码",
+    twoFASubmit: "验证并登录",
     footNote:
       "需具备 Django Staff 权限与对应功能权限；Session 模式使用服务端会话与 CSRF；JWT 模式在浏览器本地保存 access/refresh，请求头自动携带 Bearer。",
   },
@@ -261,6 +264,12 @@ export default {
     passwordMismatch: "两次输入的密码不一致",
     emailRequired: "请输入邮箱",
     emailInvalid: "邮箱格式不正确",
+    veryWeak: "非常弱",
+    weak: "弱",
+    medium: "中等",
+    strong: "强",
+    veryStrong: "非常强",
+    passwordComplexity: "需包含大写、小写、数字、特殊字符中至少3种",
   },
   systemSettings: {
     title: "系统设置",

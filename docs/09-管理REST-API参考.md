@@ -171,7 +171,8 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 
 - **权限**：已登录
 - **Body**：`{"old_password": "...", "new_password": "..."}`
-- **校验**：旧密码必须正确；新密码不少于 8 位
+- **校验**：旧密码必须正确；新密码不少于 8 位；新密码需包含大写字母、小写字母、数字、特殊字符中的至少 3 种
+- **审计**：修改成功后自动记录安全审计日志（`password_change`）
 - **说明**：修改成功后需重新登录
 
 ### 9.9.3 `POST /ip-guard/api/auth/change-email/`
@@ -179,6 +180,7 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 - **权限**：已登录
 - **Body**：`{"new_email": "user@example.com"}`
 - **校验**：邮箱格式必须合法
+- **审计**：修改成功后自动记录安全审计日志（`email_change`）
 
 ### 9.9.4 `GET /ip-guard/api/auth/2fa/status/`
 
@@ -195,12 +197,26 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 - **权限**：已登录
 - **Body**：`{"code": "123456"}`
 - **说明**：验证 TOTP 码并启用 2FA。验证成功后 `two_factor_secret` 写入用户模型。
+- **审计**：启用成功后自动记录安全审计日志（`2fa_enable`）
 
 ### 9.9.7 `POST /ip-guard/api/auth/2fa/disable/`
 
 - **权限**：已登录
 - **Body**：`{"code": "123456"}`
 - **说明**：验证 TOTP 码后禁用 2FA，清除密钥。
+- **审计**：禁用成功后自动记录安全审计日志（`2fa_disable`）
+
+---
+
+### 9.9.8 `POST /ip-guard/api/auth/2fa/login-verify/`
+
+- **权限**：无需登录（需先完成用户名密码登录步骤）
+- **Body**：`{"code": "123456", "login_mode": "session|jwt"}`
+- **说明**：2FA 登录验证端点。当用户启用了 2FA 时，登录接口会返回 `{"2fa_required": true}`，前端需引导用户输入 TOTP 验证码后调用此接口完成登录。
+- **超时**：2FA 验证窗口为 5 分钟（300 秒），超时后需重新登录
+- **返回**：
+  - Session 模式：`{"username": "..."}`，设置 session cookie
+  - JWT 模式：`{"access_token": "...", "refresh_token": "..."}`
 
 ---
 
@@ -210,6 +226,7 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 
 - **权限**：`django_ip_safeguard.view_ipaccesslog`
 - **Query 参数**：`days`（默认 7，最大 30）
+- **缓存**：Redis 缓存 5 分钟（key: `chart:stats:{days}`），缓存不可用时自动降级为直接查询
 - **说明**：返回四组图表数据：
   - `daily_trend`：按日统计 `allow`/`block` 数量
   - `risk_distribution`：高/中/低风险占比

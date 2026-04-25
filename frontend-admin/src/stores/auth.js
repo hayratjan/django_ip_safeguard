@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { meApi } from "../api";
+import { useI18nStore } from "./i18n";
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
@@ -11,6 +12,10 @@ export const useAuthStore = defineStore("auth", {
       try {
         const data = await meApi();
         this.user = data;
+        if (data.language) {
+          const i18nStore = useI18nStore();
+          i18nStore.switchLocale(data.language);
+        }
       } catch (_e) {
         this.user = null;
       } finally {

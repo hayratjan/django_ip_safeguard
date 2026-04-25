@@ -19,4 +19,15 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["vue", "vue-router", "pinia"],
+          element: ["element-plus"],
+          echarts: ["echarts", "vue-echarts"],
+        },
+      },
+    },
+  },
 });

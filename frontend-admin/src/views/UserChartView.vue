@@ -74,17 +74,20 @@ const chartData = shallowRef({
 const isDark = computed(() => themeStore.isDark);
 const textColor = computed(() => (isDark.value ? "#e5eaf3" : "#303133"));
 const bgColor = computed(() => (isDark.value ? "#1d1d1d" : "#ffffff"));
+const splitLineColor = computed(() => (isDark.value ? "#363637" : "#e4e7ed"));
+const tooltipBg = computed(() => (isDark.value ? "#2c2c2c" : "#ffffff"));
+const tooltipBorder = computed(() => (isDark.value ? "#555" : "#ddd"));
 
 const dailyOption = computed(() => {
   const data = chartData.value.daily_stats || [];
   return {
     backgroundColor: bgColor.value,
     textStyle: { color: textColor.value },
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", backgroundColor: tooltipBg.value, borderColor: tooltipBorder.value, textStyle: { color: textColor.value } },
     legend: { data: [t("recentRecords.allow"), t("recentRecords.block")], textStyle: { color: textColor.value } },
     grid: { left: 50, right: 20, bottom: 30, top: 40 },
-    xAxis: { type: "category", data: data.map((d) => d.date), axisLabel: { color: textColor.value } },
-    yAxis: { type: "value", axisLabel: { color: textColor.value } },
+    xAxis: { type: "category", data: data.map((d) => d.date), axisLabel: { color: textColor.value }, splitLine: { lineStyle: { color: splitLineColor.value } } },
+    yAxis: { type: "value", axisLabel: { color: textColor.value }, splitLine: { lineStyle: { color: splitLineColor.value } } },
     series: [
       { name: t("recentRecords.allow"), type: "bar", stack: "total", data: data.map((d) => d.allowed), itemStyle: { color: "#67c23a" } },
       { name: t("recentRecords.block"), type: "bar", stack: "total", data: data.map((d) => d.blocked), itemStyle: { color: "#f56c6c" } },
@@ -99,7 +102,7 @@ const riskOption = computed(() => {
   return {
     backgroundColor: bgColor.value,
     textStyle: { color: textColor.value },
-    tooltip: { trigger: "item" },
+    tooltip: { trigger: "item", backgroundColor: tooltipBg.value, borderColor: tooltipBorder.value, textStyle: { color: textColor.value } },
     legend: { textStyle: { color: textColor.value } },
     series: [
       {
@@ -128,11 +131,11 @@ const hourlyOption = computed(() => {
   return {
     backgroundColor: bgColor.value,
     textStyle: { color: textColor.value },
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", backgroundColor: tooltipBg.value, borderColor: tooltipBorder.value, textStyle: { color: textColor.value } },
     legend: { data: [t("recentRecords.total"), t("recentRecords.block")], textStyle: { color: textColor.value } },
     grid: { left: 50, right: 20, bottom: 30, top: 40 },
-    xAxis: { type: "category", data: hours, axisLabel: { color: textColor.value } },
-    yAxis: { type: "value", axisLabel: { color: textColor.value } },
+    xAxis: { type: "category", data: hours, axisLabel: { color: textColor.value }, splitLine: { lineStyle: { color: splitLineColor.value } } },
+    yAxis: { type: "value", axisLabel: { color: textColor.value }, splitLine: { lineStyle: { color: splitLineColor.value } } },
     series: [
       { name: t("recentRecords.total"), type: "line", data: hours.map((_, i) => totalMap[i] || 0), smooth: true, itemStyle: { color: "#409eff" } },
       { name: t("recentRecords.block"), type: "line", data: hours.map((_, i) => blockedMap[i] || 0), smooth: true, itemStyle: { color: "#f56c6c" } },
@@ -145,10 +148,10 @@ const countryOption = computed(() => {
   return {
     backgroundColor: bgColor.value,
     textStyle: { color: textColor.value },
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", backgroundColor: tooltipBg.value, borderColor: tooltipBorder.value, textStyle: { color: textColor.value } },
     grid: { left: 80, right: 20, bottom: 30, top: 20 },
-    xAxis: { type: "value", axisLabel: { color: textColor.value } },
-    yAxis: { type: "category", data: data.map((d) => d.country_code || "—").reverse(), axisLabel: { color: textColor.value } },
+    xAxis: { type: "value", axisLabel: { color: textColor.value }, splitLine: { lineStyle: { color: splitLineColor.value } } },
+    yAxis: { type: "category", data: data.map((d) => d.country_code || "—").reverse(), axisLabel: { color: textColor.value }, splitLine: { lineStyle: { color: splitLineColor.value } } },
     series: [
       { type: "bar", data: data.map((d) => d.count).reverse(), itemStyle: { color: "#409eff" } },
     ],

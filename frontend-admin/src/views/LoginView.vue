@@ -27,37 +27,70 @@
           </el-dropdown>
         </div>
 
-        <el-form :model="form" label-position="top" class="login-form" @submit.prevent="onLogin">
-          <el-form-item :label="t('login.loginMode')">
-            <el-radio-group v-model="loginMode" size="large">
-              <el-radio-button label="session">{{ t('login.sessionMode') }}</el-radio-button>
-              <el-radio-button label="jwt">{{ t('login.jwtMode') }}</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item :label="t('login.username')">
-            <el-input
-              v-model="form.username"
-              size="large"
-              :placeholder="t('login.usernamePlaceholder')"
-              clearable
-              autocomplete="username"
+        <template v-if="!twoFARequired">
+          <el-form :model="form" label-position="top" class="login-form" @submit.prevent="onLogin">
+            <el-form-item :label="t('login.loginMode')">
+              <el-radio-group v-model="loginMode" size="large">
+                <el-radio-button label="session">{{ t('login.sessionMode') }}</el-radio-button>
+                <el-radio-button label="jwt">{{ t('login.jwtMode') }}</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item :label="t('login.username')">
+              <el-input
+                v-model="form.username"
+                size="large"
+                :placeholder="t('login.usernamePlaceholder')"
+                clearable
+                autocomplete="username"
+              />
+            </el-form-item>
+            <el-form-item :label="t('login.password')">
+              <el-input
+                v-model="form.password"
+                type="password"
+                size="large"
+                :placeholder="t('login.passwordPlaceholder')"
+                show-password
+                autocomplete="current-password"
+                @keyup.enter="onLogin"
+              />
+            </el-form-item>
+            <el-button type="primary" size="large" :loading="loading" class="login-btn" native-type="submit" @click="onLogin">
+              {{ t('login.submit') }}
+            </el-button>
+          </el-form>
+        </template>
+
+        <template v-else>
+          <el-form :model="twoFAForm" label-position="top" class="login-form" @submit.prevent="on2FAVerify">
+            <el-alert
+              :title="t('login.twoFARequired')"
+              type="info"
+              show-icon
+              :closable="false"
+              style="margin-bottom: 20px"
             />
-          </el-form-item>
-          <el-form-item :label="t('login.password')">
-            <el-input
-              v-model="form.password"
-              type="password"
-              size="large"
-              :placeholder="t('login.passwordPlaceholder')"
-              show-password
-              autocomplete="current-password"
-              @keyup.enter="onLogin"
-            />
-          </el-form-item>
-          <el-button type="primary" size="large" :loading="loading" class="login-btn" native-type="submit" @click="onLogin">
-            {{ t('login.submit') }}
-          </el-button>
-        </el-form>
+            <p style="margin: 0 0 16px; color: #606266; font-size: 14px">
+              {{ t('login.twoFAHint') }}
+            </p>
+            <el-form-item :label="t('userSettings.verificationCode')">
+              <el-input
+                v-model="twoFAForm.code"
+                size="large"
+                :placeholder="t('userSettings.enterCode')"
+                maxlength="6"
+                clearable
+                @keyup.enter="on2FAVerify"
+              />
+            </el-form-item>
+            <el-button type="primary" size="large" :loading="twoFALoading" class="login-btn" native-type="submit" @click="on2FAVerify">
+              {{ t('login.twoFASubmit') }}
+            </el-button>
+            <el-button size="large" class="login-btn" style="margin-top: 8px; margin-left: 0" @click="on2FACancel">
+              {{ t('common.cancel') }}
+            </el-button>
+          </el-form>
+        </template>
 
         <p class="login-foot">
           {{ t('login.footNote') }}
@@ -72,7 +105,7 @@ import { computed, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
-import { clearJwtTokens, getCsrf, jwtLoginApi, loginApi, setJwtTokens } from "../api";
+import { clearJwtTokens, getCsrf, jwtLoginApi, loginApi, setJwtTokens, twoFactorLoginVerifyApi } from "../api";
 import { useAuthStore } from "../stores/auth";
 import { useI18nStore } from "../stores/i18n";
 import logoUrl from "../assets/logo.svg?url";
@@ -82,8 +115,11 @@ const router = useRouter();
 const store = useAuthStore();
 const i18nStore = useI18nStore();
 const loading = ref(false);
+const twoFALoading = ref(false);
 const loginMode = ref("session");
+const twoFARequired = ref(false);
 const form = reactive({ username: "", password: "" });
+const twoFAForm = reactive({ code: "" });
 
 const currentLangLabel = computed(() => {
   const lang = i18nStore.languages.find((l) => l.code === i18nStore.currentLocale);
@@ -98,20 +134,62 @@ const onLogin = async () => {
   loading.value = true;
   try {
     await getCsrf();
+    let data;
     if (loginMode.value === "jwt") {
       clearJwtTokens();
-      const tokens = await jwtLoginApi(form);
-      setJwtTokens(tokens.access_token, tokens.refresh_token);
+      data = await jwtLoginApi(form);
+      if (data["2fa_required"]) {
+        twoFARequired.value = true;
+        return;
+      }
+      setJwtTokens(data.access_token, data.refresh_token);
     } else {
       clearJwtTokens();
-      await loginApi(form);
+      data = await loginApi(form);
+      if (data["2fa_required"]) {
+        twoFARequired.value = true;
+        return;
+      }
     }
     await store.fetchMe();
     ElMessage.success(t('auth.loginSuccess'));
     router.push("/dashboard");
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || t('common.failed'));
   } finally {
     loading.value = false;
   }
+};
+
+const on2FAVerify = async () => {
+  if (!twoFAForm.code.trim()) {
+    ElMessage.warning(t('userSettings.enterCode'));
+    return;
+  }
+  twoFALoading.value = true;
+  try {
+    const data = await twoFactorLoginVerifyApi({
+      code: twoFAForm.code,
+      login_mode: loginMode.value,
+    });
+    if (loginMode.value === "jwt" && data.access_token) {
+      setJwtTokens(data.access_token, data.refresh_token);
+    }
+    twoFARequired.value = false;
+    twoFAForm.code = "";
+    await store.fetchMe();
+    ElMessage.success(t('auth.loginSuccess'));
+    router.push("/dashboard");
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || t('common.failed'));
+  } finally {
+    twoFALoading.value = false;
+  }
+};
+
+const on2FACancel = () => {
+  twoFARequired.value = false;
+  twoFAForm.code = "";
 };
 </script>
 
