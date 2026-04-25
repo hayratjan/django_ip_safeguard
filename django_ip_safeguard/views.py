@@ -30,7 +30,13 @@ from django_ip_safeguard.services.geo_ip_pool_sync import sync_all_geo_pools
 from django_ip_safeguard.services.policy_service import GEO_POOL_RULE_CHOICES, invalidate_policy_cache
 
 
+MAX_JSON_BODY_SIZE = 1024 * 1024  # 1MB
+
+
 def _load_json_body(request: HttpRequest) -> dict:
+    content_length = int(request.META.get("CONTENT_LENGTH", 0) or 0)
+    if content_length > MAX_JSON_BODY_SIZE:
+        raise ValueError(f"请求体过大，最大允许 {MAX_JSON_BODY_SIZE} 字节")
     raw = request.body.decode("utf-8").strip()
     if not raw:
         return {}
@@ -233,6 +239,8 @@ def dashboard_page_view(request: HttpRequest) -> HttpResponse:
           <li>/api/dashboard/ - 统计指标</li>
           <li>/api/recent-records/ - 近几日攻击与访问汇总</li>
           <li>/api/policy/ - 策略读取/更新</li>
+          <li>/api/geo-pools/status/ - 中国内/国际 CIDR 池同步状态（GET）</li>
+          <li>/api/geo-pools/sync/ - 手动同步 CIDR 池至 Redis（POST）</li>
           <li>/api/unban/ - 解封 IP（POST）</li>
           <li>/api/health/ - 健康状态</li>
         </ul>
@@ -646,14 +654,28 @@ def recent_records_view(request: HttpRequest) -> JsonResponse:
 @api_permission_required("django_ip_safeguard.view_ipguardpolicy")
 @require_GET
 def health_view(request: HttpRequest) -> JsonResponse:
-    """插件健康状态接口。"""
+    """插件健康状态接口（分级暴露信息）。"""
 
     cfg = get_settings()
     cache_service = RedisCacheService(cfg.redis_url)
     t0 = time.perf_counter()
     redis_ok = cache_service.ping()
     redis_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
-    provider_failures = cache_service.get_provider_failures()
+
+    # 基础健康信息（所有认证用户可见）
+    base_info = {
+        "service": "django-ip-safeguard",
+        "status": "healthy" if redis_ok else "degraded",
+        "redis_ok": redis_ok,
+    }
+
+    # 详细信息仅对超级用户或具有特定权限的用户展示
+    user = _resolve_request_user(request)
+    show_detail = user.is_superuser or user.has_perm("django_ip_safeguard.view_ipguardpolicy")
+
+    if not show_detail:
+        return api_success(base_info)
+
     pool_rows = []
     for row in IpGeoPoolStatus.objects.all().order_by("pool_key"):
         pool_rows.append(
@@ -663,21 +685,21 @@ def health_view(request: HttpRequest) -> JsonResponse:
                 "v4_interval_count": row.v4_interval_count,
                 "v6_net_count": row.v6_net_count,
                 "last_ok_at": row.last_ok_at.isoformat() if row.last_ok_at else None,
-                "last_error": (row.last_error or "")[:500],
+                "last_error": (row.last_error or "")[:200],
             }
         )
+
     return api_success(
         {
-            "service": "django-ip-safeguard",
-            "redis_ok": redis_ok,
+            **base_info,
             "redis_latency_ms": redis_latency_ms,
             "provider": cfg.provider,
             "policy_center_enabled": cfg.enable_policy_center,
-            "provider_circuit_failures": provider_failures,
             "geo_ip_pools": pool_rows,
-            "geo_pool_feed_urls": {
-                "china": cfg.geo_china_pool_url,
-                "international": cfg.geo_international_pool_url or "",
+            # 敏感配置信息不再直接暴露完整 URL
+            "geo_pool_configured": {
+                "china": bool(cfg.geo_china_pool_url),
+                "international": bool(cfg.geo_international_pool_url),
             },
         }
     )

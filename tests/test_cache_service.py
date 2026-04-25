@@ -4,6 +4,7 @@ from django_ip_safeguard.services.cache import RedisCacheService
 class FakeRedis:
     def __init__(self):
         self.data = {}
+        self.sorted_sets = {}
 
     def get(self, key):
         return self.data.get(key)
@@ -31,6 +32,66 @@ class FakeRedis:
 
     def expire(self, key, ttl):
         return True
+
+    def pipeline(self):
+        return FakePipeline(self)
+
+    def zremrangebyscore(self, key, min_score, max_score):
+        if key not in self.sorted_sets:
+            return 0
+        self.sorted_sets[key] = [
+            (member, score)
+            for member, score in self.sorted_sets[key]
+            if not (min_score <= score <= max_score)
+        ]
+        return len(self.sorted_sets[key])
+
+    def zadd(self, key, mapping):
+        if key not in self.sorted_sets:
+            self.sorted_sets[key] = []
+        for member, score in mapping.items():
+            self.sorted_sets[key].append((member, score))
+        return len(self.sorted_sets[key])
+
+    def zcard(self, key):
+        return len(self.sorted_sets.get(key, []))
+
+
+class FakePipeline:
+    def __init__(self, redis):
+        self.redis = redis
+        self.commands = []
+
+    def zremrangebyscore(self, key, min_score, max_score):
+        self.commands.append(("zremrangebyscore", key, min_score, max_score))
+        return self
+
+    def zadd(self, key, mapping):
+        self.commands.append(("zadd", key, mapping))
+        return self
+
+    def zcard(self, key):
+        self.commands.append(("zcard", key))
+        return self
+
+    def expire(self, key, ttl):
+        self.commands.append(("expire", key, ttl))
+        return self
+
+    def execute(self):
+        results = []
+        for cmd in self.commands:
+            op = cmd[0]
+            if op == "zremrangebyscore":
+                results.append(self.redis.zremrangebyscore(cmd[1], cmd[2], cmd[3]))
+            elif op == "zadd":
+                results.append(self.redis.zadd(cmd[1], cmd[2]))
+            elif op == "zcard":
+                results.append(self.redis.zcard(cmd[1]))
+            elif op == "expire":
+                results.append(self.redis.expire(cmd[1], cmd[2]))
+        self.commands = []
+        return results
 
 
 def test_lock_and_release(monkeypatch):

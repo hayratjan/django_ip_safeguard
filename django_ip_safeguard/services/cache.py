@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Optional
 
 import redis
@@ -143,16 +144,21 @@ class RedisCacheService:
         except Exception:  # noqa: BLE001
             return 0
 
-    def is_rate_limited(self, ip: str, max_per_minute: int) -> bool:
-        """滑动窗口：自首次请求起 60 秒内计数，超过 max 则视为限流（max<=0 不启用）。"""
+    def is_rate_limited(self, ip: str, max_per_minute: int, window_seconds: int = 60) -> bool:
+        """滑动窗口限流：使用 Redis Sorted Set 记录请求时间戳，清理过期条目后统计窗口内数量。"""
 
         if max_per_minute <= 0:
             return False
         key = self._rate_limit_key(ip)
+        now = time.time()
+        window_start = now - window_seconds
         try:
-            count = int(self.client.incr(key))
-            if count == 1:
-                self.client.expire(key, 60)
-            return count > max_per_minute
+            pipe = self.client.pipeline()
+            pipe.zremrangebyscore(key, 0, window_start)
+            pipe.zadd(key, {str(now): now})
+            pipe.zcard(key)
+            pipe.expire(key, window_seconds)
+            _, _, count, _ = pipe.execute()
+            return int(count) > max_per_minute
         except Exception:  # noqa: BLE001
             return False

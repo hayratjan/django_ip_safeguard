@@ -6,6 +6,7 @@ from django_ip_safeguard.conf import get_settings
 from django_ip_safeguard.services.audit_service import log_access_decision
 from django_ip_safeguard.services.ban_service import ban_ip
 from django_ip_safeguard.services.cache import RedisCacheService
+from django_ip_safeguard.services.circuit_breaker import CircuitBreaker
 from django_ip_safeguard.services.ip_matcher import first_matching_rule
 from django_ip_safeguard.services.ip_resolver import resolve_client_ip
 from django_ip_safeguard.services.provider_factory import build_provider
@@ -37,6 +38,11 @@ class IpGuardMiddleware:
         self.config = get_settings()
         self.cache_service = RedisCacheService(self.config.redis_url)
         self.provider = build_provider(self.config)
+        self.circuit_breaker = CircuitBreaker(
+            cache_service=self.cache_service,
+            failure_threshold=self.config.provider_circuit_breaker_failures,
+            recovery_timeout=self.config.provider_circuit_breaker_ttl,
+        )
 
     def __call__(self, request):
         runtime_config = load_effective_policy(self.config)
@@ -125,7 +131,7 @@ class IpGuardMiddleware:
 
         ip_intel = self.cache_service.get_ip_intel(client_ip)
         if not ip_intel:
-            if self._is_provider_circuit_open(runtime_config):
+            if not self.circuit_breaker.allow_request():
                 logger.warning("Provider 熔断生效，跳过外部请求。")
                 return self._handle_provider_failed(request, runtime_config)
 
@@ -143,13 +149,10 @@ class IpGuardMiddleware:
                     else runtime_config.low_risk_cache_ttl
                 )
                 self.cache_service.set_ip_intel(ip_intel, ttl=ttl)
-                self.cache_service.clear_provider_failures()
+                self.circuit_breaker.record_success()
             except Exception as exc:  # noqa: BLE001
                 logger.exception("IP 情报查询失败: %s", exc)
-                failure_count = self.cache_service.increase_provider_failures(
-                    runtime_config.provider_circuit_breaker_ttl
-                )
-                logger.warning("Provider 失败次数: %s", failure_count)
+                self.circuit_breaker.record_failure()
                 return self._handle_provider_failed(request, runtime_config)
             finally:
                 if lock_acquired:
@@ -205,6 +208,4 @@ class IpGuardMiddleware:
             status=runtime_config.block_status_code,
         )
 
-    def _is_provider_circuit_open(self, runtime_config) -> bool:
-        failures = self.cache_service.get_provider_failures()
-        return failures >= runtime_config.provider_circuit_breaker_failures
+

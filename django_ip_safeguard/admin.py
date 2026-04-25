@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGuardPolicy
+from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy
 from django_ip_safeguard.services.policy_service import invalidate_policy_cache
 
 
@@ -26,6 +26,33 @@ class IpGuardPolicyAdmin(admin.ModelAdmin):
         super().delete_model(request, obj)
         invalidate_policy_cache()
 
+
+@admin.register(IpGeoPoolStatus)
+class IpGeoPoolStatusAdmin(admin.ModelAdmin):
+    """地理 IP 池同步状态（只读运维视图）。"""
+
+    list_display = (
+        "pool_key",
+        "line_count",
+        "v4_interval_count",
+        "v6_net_count",
+        "last_ok_at",
+    )
+    readonly_fields = (
+        "pool_key",
+        "source_url",
+        "line_count",
+        "v4_interval_count",
+        "v6_net_count",
+        "last_ok_at",
+        "last_error",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 @admin.register(IpAccessLog)
 class IpAccessLogAdmin(admin.ModelAdmin):

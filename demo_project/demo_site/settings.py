@@ -132,3 +132,5 @@ IP_GUARD_USE_DB_LOG = True
 IP_GUARD_ENABLE_POLICY_CENTER = True
 IP_GUARD_FAIL_OPEN = True
 IP_GUARD_TRUSTED_PROXY_CIDRS = ("127.0.0.1/32",)
+# JWT 独立密钥（生产环境应使用环境变量）
+IP_GUARD_JWT_SECRET_KEY = "test-jwt-secret-key-at-least-32-bytes-long"

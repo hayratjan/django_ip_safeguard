@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import httpx
 from django.utils import timezone
@@ -20,8 +21,38 @@ POOL_CHINA = "china"
 POOL_INTERNATIONAL = "international"
 
 
+class SsrfError(Exception):
+    """SSRF 防护拦截异常。"""
+
+
+MAX_SYNC_TIMEOUT = 120.0
+MAX_REDIRECTS = 3
+
+
+def _validate_url(url: str) -> None:
+    """校验 URL 协议与主机，防止 SSRF 攻击。"""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise SsrfError(f"不支持的 URL 协议: {parsed.scheme}")
+    if not parsed.netloc:
+        raise SsrfError("URL 缺少主机名")
+    # 禁止访问内网地址（基础防护）
+    hostname = parsed.hostname or ""
+    if hostname.startswith(("127.", "10.", "192.168.", "172.")):
+        # 允许特定内网数据源可配置白名单，此处默认拦截
+        raise SsrfError(f"禁止访问内网地址: {hostname}")
+    if hostname in {"localhost", "0.0.0.0", "::1"}:
+        raise SsrfError(f"禁止访问本地地址: {hostname}")
+
+
 def _fetch_text(url: str, timeout: float) -> str:
-    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+    _validate_url(url)
+    effective_timeout = min(float(timeout), MAX_SYNC_TIMEOUT)
+    with httpx.Client(
+        timeout=effective_timeout,
+        follow_redirects=True,
+        limits=httpx.Limits(max_redirects=MAX_REDIRECTS),
+    ) as client:
         resp = client.get(url)
         resp.raise_for_status()
         return resp.text
@@ -32,7 +63,7 @@ def sync_geo_pool(
     url: str,
     cfg: IpGuardSettings,
     *,
-    timeout: float = 120.0,
+    timeout: float = 60.0,
 ) -> Dict[str, Any]:
     """
     同步单个池：拉取 URL、构建索引、写入 Redis、更新数据库状态。
@@ -92,19 +123,20 @@ def sync_geo_pool(
 
 
 def sync_all_geo_pools(cfg: IpGuardSettings) -> Dict[str, Any]:
-    """按配置同步中国内池与国际池（国际池 URL 为空则跳过）。"""
+    """按配置同步中国内池与国际池（国际池 URL 为空则跳过且不覆盖 Redis 已有数据）。"""
 
     results = []
     results.append(sync_geo_pool(POOL_CHINA, cfg.geo_china_pool_url, cfg))
-    if cfg.geo_international_pool_url.strip():
-        results.append(sync_geo_pool(POOL_INTERNATIONAL, cfg.geo_international_pool_url, cfg))
+    intl_url = cfg.geo_international_pool_url.strip()
+    if intl_url:
+        results.append(sync_geo_pool(POOL_INTERNATIONAL, intl_url, cfg))
     else:
         results.append(
             {
                 "ok": False,
                 "pool_key": POOL_INTERNATIONAL,
-                "line_count": 0,
-                "error": "IP_GUARD_GEO_INTERNATIONAL_POOL_URL 未配置，跳过国际池",
+                "skipped": True,
+                "message": "未配置 IP_GUARD_GEO_INTERNATIONAL_POOL_URL，已跳过国际池同步",
             }
         )
     return {"results": results}

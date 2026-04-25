@@ -17,6 +17,9 @@ export const healthApi = () => http.get("/health/");
 export const getPolicyApi = () => http.get("/policy/");
 export const updatePolicyApi = (payload) => http.post("/policy/", payload);
 
+export const getGeoPoolsStatusApi = () => http.get("/geo-pools/status/");
+export const syncGeoPoolsApi = () => http.post("/geo-pools/sync/");
+
 export const getBanListApi = (params) => http.get("/ban-list/", { params });
 export const banIpApi = (payload) => http.post("/ban/", payload);
 export const unbanIpApi = (payload) => http.post("/unban/", payload);

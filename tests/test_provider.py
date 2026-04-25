@@ -33,7 +33,7 @@ def test_http_provider_parse_payload(monkeypatch):
             return {"country_code": "cn", "risk_score": 88, "risk_tags": ["vpn"]}
 
     class _Client:
-        def __init__(self, timeout):
+        def __init__(self, timeout, limits=None):
             self.timeout = timeout
 
         def __enter__(self):
@@ -74,7 +74,7 @@ def test_http_provider_retry_success(monkeypatch):
     call_state = {"count": 0}
 
     class _Client:
-        def __init__(self, timeout):
+        def __init__(self, timeout, limits=None):
             self.timeout = timeout
 
         def __enter__(self):

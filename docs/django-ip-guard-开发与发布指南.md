@@ -12,6 +12,16 @@
 
 本文档用于统一说明 `django-ip-safeguard` 的功能边界、配置方式、开发流程与发布流程，面向研发、运维与发布人员。
 
+## 📑 按功能拆分的详细文档（docs）
+
+各子系统已单独成文，便于检索、评审与交付；**完整目录与推荐阅读路径**见：
+
+- **[docs/README.md](./README.md)**（文档中心索引）
+
+涵盖：产品术语、安装接入、中间件流程、配置项全集、策略中心、地理 IP 池、Provider 与风险引擎、Redis 键与限流熔断、REST API 全文、认证与权限、Vue 控制台、审计与大盘、运维监控、管理命令与定时任务、开发测试等。
+
+---
+
 ## 📚 目录
 
 - `🎯 1. 项目定位与命名`
@@ -37,13 +47,15 @@
 ## 2.1 请求前置拦截
 
 - 通过 `IpGuardMiddleware` 在中间件阶段执行安全判断。
-- 请求处理顺序：
+- 请求处理顺序（策略中心合并后）：
   1. 解析真实客户端 IP。
-  2. 检查封禁缓存。
-  3. 命中情报缓存则直接判定。
-  4. 未命中则调用 Provider 获取情报并缓存。
-  5. 执行风险引擎判定（风险分、标签、地区）。
-  6. 放行或拦截；按开关写入审计日志。
+  2. **IP 白名单**：命中则直接放行。
+  3. **IP 黑名单**：命中则拦截。
+  4. **中国内 / 国际 CIDR 池规则**（依赖 Redis 索引；池未同步成功时该步不生效，避免误拦全站）。
+  5. **单 IP 每分钟请求上限**（Redis 计数）。
+  6. **封禁缓存**：命中则拦截。
+  7. 命中情报缓存则走风险引擎；未命中则调用 Provider 获取情报并缓存。
+  8. 风险引擎判定（风险分、标签、地区）；放行或拦截；按开关写入审计日志。
 
 ## 2.2 IP 情报查询（Provider）
 
@@ -66,6 +78,23 @@
 - 风险分阈值策略（`risk_score >= threshold`）。
 - 风险标签黑名单策略（VPN/Tor/Proxy 等）。
 - 国家白名单/黑名单策略。
+
+## 2.4.1 中国内 / 国际 IP 池（CIDR 列表）
+
+- 从可配置的远程 URL 拉取**每行一条** CIDR（或单 IP）的文本，构建 IPv4 合并区间 + IPv6 网段列表，写入 **Redis**（键 `ip_guard:geo_pool:data:china` / `ip_guard:geo_pool:data:international`）。
+- 默认中国内数据源：`17mon/china_ip_list`（可在 `IP_GUARD_GEO_CHINA_POOL_URL` 覆盖）；国际池需自行配置 `IP_GUARD_GEO_INTERNATIONAL_POOL_URL`（同样为纯文本 CIDR 列表）。
+- 策略字段（存于 `IpGuardPolicy`，亦可通过 `settings` 在未启用策略中心时设定默认规则）：
+  - `off`：不启用该池规则。
+  - `allow_only_in_pool`：**仅允许**落在该池网段内的访问（典型：仅允许中国内列表）。
+  - `block_in_pool`：落在该池网段内的访问**一律拦截**。
+- **定时更新**：生产环境建议使用 `crontab` 或 `systemd timer` 每日执行管理命令（与控制台「同步池」按钮共用逻辑）：
+
+```bash
+python manage.py sync_geo_ip_pools
+```
+
+- 管理接口：`GET /ip-guard/api/geo-pools/status/` 查看同步状态；`POST /ip-guard/api/geo-pools/sync/` 手动触发（需 `change_ipguardpolicy`）。
+- 可选配置：`IP_GUARD_GEO_POOL_INDEX_CACHE_SECONDS`（Worker 从 Redis 刷新本地索引缓存的秒数，默认 `60`）；`IP_GUARD_CHINA_POOL_RULE` / `IP_GUARD_INTERNATIONAL_POOL_RULE` 在未走策略中心库表时作为默认规则。
 
 ## 2.5 降级策略
 
@@ -118,6 +147,10 @@
 - `IP_GUARD_IP_WHITELIST`：IP 白名单（单 IP 或 CIDR，命中直接放行）
 - `IP_GUARD_IP_BLACKLIST`：IP 黑名单（单 IP 或 CIDR；若启用策略中心，以库表 `IpGuardPolicy` 为准）
 - `IP_GUARD_RATE_LIMIT_PER_MINUTE`：单 IP 每分钟请求上限，`0` 关闭；依赖 Redis 计数
+- `IP_GUARD_GEO_CHINA_POOL_URL`：中国内 CIDR 源地址（默认 GitHub `china_ip_list.txt`）
+- `IP_GUARD_GEO_INTERNATIONAL_POOL_URL`：国际（或其它）CIDR 源地址，**空则不同步国际池**（需与自建列表格式一致：每行一条 CIDR）
+- `IP_GUARD_CHINA_POOL_RULE` / `IP_GUARD_INTERNATIONAL_POOL_RULE`：`off` | `allow_only_in_pool` | `block_in_pool`（策略中心关闭时作为默认；开启时以库表 `IpGuardPolicy` 字段为准）
+- `IP_GUARD_GEO_POOL_INDEX_CACHE_SECONDS`：进程内索引缓存秒数，默认 `60`
 
 ## 3.4 代理与降级配置
 
@@ -188,7 +221,9 @@ urlpatterns = [
 - `/ip-guard/`：Dashboard 页面
 - `/ip-guard/api/dashboard/`：运营统计（含 24h 拦截率、决策分布、按小时趋势、热门路径、拦截原因 Top 等）
 - `/ip-guard/api/recent-records/`：近若干天（`days`，默认 7、最大 30）攻击/拦截记录、IP 访问记录、按日放行与拦截汇总、近期封禁；可选 `attack_limit`、`access_limit`、`ban_limit`（默认 100、100、40，各自有上限）
-- `/ip-guard/api/policy/`：策略读取/更新（GET/POST，含 IP 白/黑名单、地区白/黑名单、单 IP 每分钟请求上限等）
+- `/ip-guard/api/policy/`：策略读取/更新（GET/POST，含 IP 白/黑名单、地区白/黑名单、单 IP 每分钟请求上限、**中国内/国际池规则** `china_pool_rule` / `international_pool_rule` 及数据源说明字段 `pool_feed_urls` 等）
+- `/ip-guard/api/geo-pools/status/`：地理 IP 池同步状态与数据源 URL 说明（GET）
+- `/ip-guard/api/geo-pools/sync/`：手动拉取远程 CIDR 并写入 Redis（POST，需 `change_ipguardpolicy`）
   - 地区白/黑名单仅支持两位国家码（如 `CN`/`US`），写入时自动大写去重
   - IP 白/黑名单支持单 IP 与 CIDR（如 `203.0.113.8`、`10.0.0.0/8`），写入时会规范化并去重
 - `/ip-guard/api/ban/`、`/ip-guard/api/unban/`、`/ip-guard/api/ban-list/`：封禁与分页列表（支持 `q`、`active`、`source`）
