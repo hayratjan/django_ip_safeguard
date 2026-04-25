@@ -1,4 +1,3 @@
-import pytest
 from django.http import HttpRequest
 
 from django_ip_safeguard.services.ip_resolver import (

@@ -4,8 +4,6 @@ from typing import Mapping, Optional, Tuple
 
 from django.conf import settings
 
-from django_ip_safeguard.exceptions import ImproperlyConfiguredError
-
 
 @dataclass(frozen=True)
 class IpGuardSettings:
@@ -73,25 +71,15 @@ def _to_str_tuple(value: Optional[object]) -> Tuple[str, ...]:
     return (str(value).strip(),)
 
 
-def _resolve_jwt_secret_key() -> str:
-    """强制要求配置独立的 JWT Secret Key，禁止回退到 Django SECRET_KEY。"""
-    key = str(
+def _read_jwt_secret_key() -> str:
+    """读取 JWT 密钥（可为空）；签发与强校验在 jwt_service 中执行。"""
+    return str(
         getattr(
             settings,
             "IP_GUARD_JWT_SECRET_KEY",
             os.getenv("IP_GUARD_JWT_SECRET_KEY", ""),
         )
     ).strip()
-    if not key:
-        raise ImproperlyConfiguredError(
-            "必须配置 IP_GUARD_JWT_SECRET_KEY（建议长度 >= 32 的随机字符串），"
-            "禁止回退到 Django SECRET_KEY。"
-        )
-    if len(key) < 32:
-        raise ImproperlyConfiguredError(
-            f"IP_GUARD_JWT_SECRET_KEY 长度必须 >= 32 字节，当前 {len(key)} 字节。"
-        )
-    return key
 
 
 def get_settings() -> IpGuardSettings:
@@ -142,7 +130,7 @@ def get_settings() -> IpGuardSettings:
         low_risk_cache_ttl=int(getattr(settings, "IP_GUARD_LOW_RISK_CACHE_TTL", 1800)),
         dedupe_lock_seconds=int(getattr(settings, "IP_GUARD_DEDUPE_LOCK_SECONDS", 3)),
         admin_url_prefix=str(getattr(settings, "IP_GUARD_ADMIN_URL_PREFIX", "ip-guard")).strip("/"),
-        jwt_secret_key=_resolve_jwt_secret_key(),
+        jwt_secret_key=_read_jwt_secret_key(),
         jwt_algorithm=str(getattr(settings, "IP_GUARD_JWT_ALGORITHM", "HS256")),
         jwt_access_token_ttl_seconds=int(getattr(settings, "IP_GUARD_JWT_ACCESS_TTL", 7200)),
         jwt_refresh_token_ttl_seconds=int(getattr(settings, "IP_GUARD_JWT_REFRESH_TTL", 604800)),

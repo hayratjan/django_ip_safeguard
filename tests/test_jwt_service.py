@@ -6,6 +6,7 @@ import pytest
 
 import django_ip_safeguard.services.jwt_service as jwt_mod
 from django_ip_safeguard.conf import IpGuardSettings
+from django_ip_safeguard.exceptions import ImproperlyConfiguredError
 
 
 @pytest.fixture
@@ -87,3 +88,18 @@ def test_get_user_from_access_token(jwt_cfg):
 def test_get_user_from_access_token_wrong_typ(jwt_cfg):
     pair = jwt_mod.issue_token_pair(SimpleNamespace(id=1, username="a"))
     assert jwt_mod.get_user_from_access_token(pair["refresh_token"]) is None
+
+
+def test_issue_token_raises_when_jwt_secret_empty(monkeypatch):
+    """未配置密钥时不应静默签发无效 JWT。"""
+    cfg = IpGuardSettings(jwt_secret_key="")
+    monkeypatch.setattr(jwt_mod, "get_settings", lambda: cfg)
+    with pytest.raises(ImproperlyConfiguredError):
+        jwt_mod.issue_token_pair(SimpleNamespace(id=1, username="a"))
+
+
+def test_issue_token_raises_when_jwt_secret_too_short(monkeypatch):
+    cfg = IpGuardSettings(jwt_secret_key="short")
+    monkeypatch.setattr(jwt_mod, "get_settings", lambda: cfg)
+    with pytest.raises(ImproperlyConfiguredError):
+        jwt_mod.issue_token_pair(SimpleNamespace(id=1, username="a"))

@@ -34,7 +34,7 @@
 视图层 `_resolve_request_user`：
 
 1. 若 `request.user` 已认证（Session），直接使用。  
-2. 否则读取 `Authorization: Bearer ...`，用 **`IP_GUARD_JWT_SECRET_KEY`**（默认回退 `SECRET_KEY`）校验 JWT，解析 `sub` 为用户 ID，加载 `User`。  
+2. 否则读取 `Authorization: Bearer ...`，用 **`IP_GUARD_JWT_SECRET_KEY`** 校验 JWT，解析 `sub` 为用户 ID，加载 `User`（密钥须在 settings 或环境中配置且长度 ≥32，未配置时 Bearer 校验失败，不影响未使用 JWT 的站点启动）。  
 3. 将解析到的用户赋回 `request.user`，供后续 `has_perm` 使用。
 
 ### 10.3.3 刷新
@@ -88,7 +88,7 @@ Django 的 `@csrf_protect` 对 **POST** 生效。JWT 场景下浏览器仍可能
 
 | 项 | 说明 |
 |----|------|
-| `IP_GUARD_JWT_SECRET_KEY` | 签发密钥，**生产必须独立配置** |
+| `IP_GUARD_JWT_SECRET_KEY` | 启用 JWT 时必填，建议 ≥32 字符随机串；未配置时进程可启动，JWT 签发/校验会报错 |
 | `IP_GUARD_JWT_ALGORITHM` | 默认 `HS256` |
 | `IP_GUARD_JWT_ACCESS_TTL` | access 有效期（秒） |
 | `IP_GUARD_JWT_REFRESH_TTL` | refresh 有效期（秒） |

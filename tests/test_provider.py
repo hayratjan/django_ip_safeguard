@@ -42,6 +42,9 @@ def test_http_provider_parse_payload(monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return None
 
+        def close(self):
+            return None
+
         def get(self, endpoint, params, headers):
             assert endpoint == "https://example.com/ip-intel"
             assert params["ip"] == "8.8.8.8"
@@ -81,6 +84,9 @@ def test_http_provider_retry_success(monkeypatch):
             return self
 
         def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def close(self):
             return None
 
         def get(self, endpoint, params, headers):

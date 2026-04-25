@@ -1,5 +1,3 @@
-import pytest
-
 from django_ip_safeguard.services.circuit_breaker import CircuitBreaker
 
 

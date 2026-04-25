@@ -1,6 +1,5 @@
 import logging
 import time
-from typing import Optional
 
 from django_ip_safeguard.services.cache import RedisCacheService
 
