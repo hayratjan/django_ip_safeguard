@@ -31,6 +31,8 @@ ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
 # Application definition
 
 INSTALLED_APPS = [
+    'unfold',
+    'unfold.contrib.filters',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -105,9 +107,19 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'zh-hans'
 
-TIME_ZONE = 'UTC'
+LANGUAGES = [
+    ('zh-hans', '简体中文'),
+    ('en', 'English'),
+]
+
+LOCALE_PATHS = [
+    BASE_DIR / 'locale',
+    BASE_DIR.parent / 'django_ip_safeguard' / 'locale',
+]
+
+TIME_ZONE = 'Asia/Shanghai'
 
 USE_I18N = True
 
@@ -123,6 +135,23 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# CSRF / Session Cookie 跨域配置（本地联调：前端 5173/5174 → 后端 8010）
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_DOMAIN = None
+CSRF_TRUSTED_ORIGINS = [
+    "http://127.0.0.1:5173", "http://localhost:5173",
+    "http://127.0.0.1:5174", "http://localhost:5174",
+    "http://127.0.0.1:8010",
+]
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_DOMAIN = None
+CORS_ALLOWED_ORIGINS = [
+    "http://127.0.0.1:5173", "http://localhost:5173",
+    "http://127.0.0.1:5174", "http://localhost:5174",
+    "http://127.0.0.1:8010",
+]
 
 # django-ip-safeguard 配置（本地联调）
 IP_GUARD_ENABLED = True

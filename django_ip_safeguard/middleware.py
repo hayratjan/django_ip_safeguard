@@ -1,6 +1,7 @@
 import logging
 
 from django.http import JsonResponse
+from django.utils.translation import gettext_lazy as _
 
 from django_ip_safeguard.conf import get_settings
 from django_ip_safeguard.services.audit_service import log_access_decision
@@ -19,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 def should_fail_open(path: str, default_fail_open: bool, open_prefixes: tuple, close_prefixes: tuple) -> bool:
-    """按路径前缀决定外部服务失败时是否放行。"""
-
     for prefix in close_prefixes:
         if prefix and path.startswith(prefix):
             return False
@@ -31,7 +30,6 @@ def should_fail_open(path: str, default_fail_open: bool, open_prefixes: tuple, c
 
 
 class IpGuardMiddleware:
-    """IP 安全中间件。"""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -54,7 +52,6 @@ class IpGuardMiddleware:
         if not client_ip:
             return self.get_response(request)
 
-        # 策略 IP：白名单优先（支持单 IP / CIDR），命中则跳过黑名单、限流与情报
         wl_hit, _ = first_matching_rule(client_ip, runtime_config.ip_whitelist)
         if wl_hit:
             return self.get_response(request)
@@ -63,20 +60,21 @@ class IpGuardMiddleware:
 
         bl_hit, bl_rule = first_matching_rule(client_ip, runtime_config.ip_blacklist)
         if bl_hit:
+            reason = _("命中 IP 黑名单: %(rule)s") % {"rule": bl_rule}
             log_access_decision(
                 enabled=runtime_config.use_db_log,
                 ip=client_ip,
                 path=request.path,
                 decision="block",
-                reason=f"命中 IP 黑名单: {bl_rule}",
+                reason=reason,
                 ip_intel=policy_intel,
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
             return JsonResponse(
                 {
-                    "detail": "访问被安全策略阻止",
-                    "reason": f"命中 IP 黑名单: {bl_rule}",
+                    "detail": str(_("访问被安全策略阻止")),
+                    "reason": str(reason),
                     "ip": client_ip,
                 },
                 status=runtime_config.block_status_code,
@@ -96,7 +94,7 @@ class IpGuardMiddleware:
             )
             return JsonResponse(
                 {
-                    "detail": "访问被安全策略阻止",
+                    "detail": str(_("访问被安全策略阻止")),
                     "reason": geo_reason,
                     "ip": client_ip,
                 },
@@ -104,20 +102,21 @@ class IpGuardMiddleware:
             )
 
         if self.cache_service.is_rate_limited(client_ip, runtime_config.rate_limit_per_minute):
+            reason = str(_("超过单 IP 每分钟请求上限"))
             log_access_decision(
                 enabled=runtime_config.use_db_log,
                 ip=client_ip,
                 path=request.path,
                 decision="block",
-                reason="超过单 IP 每分钟请求上限",
+                reason=reason,
                 ip_intel=policy_intel,
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
             return JsonResponse(
                 {
-                    "detail": "访问被安全策略阻止",
-                    "reason": "超过单 IP 每分钟请求上限",
+                    "detail": str(_("访问被安全策略阻止")),
+                    "reason": reason,
                     "ip": client_ip,
                 },
                 status=runtime_config.block_status_code,
@@ -125,7 +124,7 @@ class IpGuardMiddleware:
 
         if self.cache_service.is_banned(client_ip):
             return JsonResponse(
-                {"detail": "IP 已被封禁", "ip": client_ip},
+                {"detail": str(_("IP 已被封禁")), "ip": client_ip},
                 status=runtime_config.block_status_code,
             )
 
@@ -139,7 +138,6 @@ class IpGuardMiddleware:
                 client_ip, ttl=runtime_config.dedupe_lock_seconds
             )
             if not lock_acquired:
-                # 并发请求场景下其他请求正在查询，优先降级避免击穿。
                 return self._handle_provider_failed(request, runtime_config)
             try:
                 ip_intel = self.provider.fetch_ip_intel(client_ip)
@@ -178,7 +176,7 @@ class IpGuardMiddleware:
                     ban_ttl=decision.ban_ttl or runtime_config.ban_ttl,
                 )
             return JsonResponse(
-                {"detail": "访问被安全策略阻止", "reason": decision.reason, "ip": client_ip},
+                {"detail": str(_("访问被安全策略阻止")), "reason": decision.reason, "ip": client_ip},
                 status=runtime_config.block_status_code,
             )
 
@@ -204,8 +202,6 @@ class IpGuardMiddleware:
         if fail_open_now:
             return self.get_response(request)
         return JsonResponse(
-            {"detail": "IP 风险服务暂不可用"},
+            {"detail": str(_("IP 风险服务暂不可用"))},
             status=runtime_config.block_status_code,
         )
-
-

@@ -1,13 +1,13 @@
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
+from unfold.admin import ModelAdmin
 
 from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy
 from django_ip_safeguard.services.policy_service import invalidate_policy_cache
 
 
 @admin.register(IpGuardPolicy)
-class IpGuardPolicyAdmin(admin.ModelAdmin):
-    """IP 策略中心管理。"""
-
+class IpGuardPolicyAdmin(ModelAdmin):
     list_display = (
         "name",
         "enabled",
@@ -17,6 +17,7 @@ class IpGuardPolicyAdmin(admin.ModelAdmin):
         "updated_at",
     )
     search_fields = ("name",)
+    list_filter_submit = True
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -28,9 +29,7 @@ class IpGuardPolicyAdmin(admin.ModelAdmin):
 
 
 @admin.register(IpGeoPoolStatus)
-class IpGeoPoolStatusAdmin(admin.ModelAdmin):
-    """地理 IP 池同步状态（只读运维视图）。"""
-
+class IpGeoPoolStatusAdmin(ModelAdmin):
     list_display = (
         "pool_key",
         "line_count",
@@ -54,13 +53,13 @@ class IpGeoPoolStatusAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-@admin.register(IpAccessLog)
-class IpAccessLogAdmin(admin.ModelAdmin):
-    """IP 访问日志管理。"""
 
+@admin.register(IpAccessLog)
+class IpAccessLogAdmin(ModelAdmin):
     list_display = ("ip", "country_code", "risk_score", "decision", "path", "created_at")
     search_fields = ("ip", "country_code", "decision", "path")
     list_filter = ("decision", "country_code", "created_at")
+    list_filter_submit = True
     readonly_fields = ("ip", "country_code", "risk_score", "risk_tags", "decision", "reason", "path", "created_at")
 
     def has_add_permission(self, request):
@@ -68,18 +67,17 @@ class IpAccessLogAdmin(admin.ModelAdmin):
 
 
 @admin.register(IpBanRecord)
-class IpBanRecordAdmin(admin.ModelAdmin):
-    """IP 封禁管理。"""
-
+class IpBanRecordAdmin(ModelAdmin):
     list_display = ("ip", "ban_source", "is_active", "expired_at", "created_at")
     search_fields = ("ip", "ban_reason")
     list_filter = ("is_active", "ban_source", "created_at")
+    list_filter_submit = True
     actions = ("mark_active", "mark_inactive")
 
-    @admin.action(description="批量设为生效")
+    @admin.action(description=_("批量设为生效"))
     def mark_active(self, request, queryset):
         queryset.update(is_active=True)
 
-    @admin.action(description="批量设为失效")
+    @admin.action(description=_("批量设为失效"))
     def mark_inactive(self, request, queryset):
         queryset.update(is_active=False)

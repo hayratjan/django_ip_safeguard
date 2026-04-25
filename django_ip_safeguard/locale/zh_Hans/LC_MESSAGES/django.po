@@ -1,0 +1,511 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: django-ip-safeguard\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-26 05:45+0800\n"
+"PO-Revision-Date: 2026-04-26 05:45+0800\n"
+"Last-Translator: \n"
+"Language-Team: Chinese (Simplified)\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: apps.py
+msgid "IP安全卫士"
+msgstr "IP安全卫士"
+
+#: models.py
+msgid "策略名"
+msgstr "策略名"
+
+#: models.py
+msgid "启用防护"
+msgstr "启用防护"
+
+#: models.py
+msgid "风险阈值"
+msgstr "风险阈值"
+
+#: models.py
+msgid "风险标签黑名单"
+msgstr "风险标签黑名单"
+
+#: models.py
+msgid "国家白名单"
+msgstr "国家白名单"
+
+#: models.py
+msgid "国家黑名单"
+msgstr "国家黑名单"
+
+#: models.py
+msgid "IP白名单"
+msgstr "IP白名单"
+
+#: models.py
+msgid "IP黑名单"
+msgstr "IP黑名单"
+
+#: models.py
+msgid "单 IP 每分钟请求上限"
+msgstr "单 IP 每分钟请求上限"
+
+#: models.py
+msgid "0 表示不启用；超过则直接拦截（不调用情报接口）"
+msgstr "0 表示不启用；超过则直接拦截（不调用情报接口）"
+
+#: models.py
+msgid "全局失败放行"
+msgstr "全局失败放行"
+
+#: models.py
+msgid "按路径失败放行"
+msgstr "按路径失败放行"
+
+#: models.py
+msgid "按路径失败阻断"
+msgstr "按路径失败阻断"
+
+#: models.py
+msgid "拦截状态码"
+msgstr "拦截状态码"
+
+#: models.py
+msgid "情报缓存TTL"
+msgstr "情报缓存TTL"
+
+#: models.py
+msgid "封禁TTL"
+msgstr "封禁TTL"
+
+#: models.py
+msgid "记录数据库审计"
+msgstr "记录数据库审计"
+
+#: models.py
+msgid "中国内网段池规则"
+msgstr "中国内网段池规则"
+
+#: models.py
+msgid "off=不启用；allow_only_in_pool=仅允许命中中国内 CIDR 池；block_in_pool=命中中国内池则拦截"
+msgstr "off=不启用；allow_only_in_pool=仅允许命中中国内 CIDR 池；block_in_pool=命中中国内池则拦截"
+
+#: models.py
+msgid "国际网段池规则"
+msgstr "国际网段池规则"
+
+#: models.py
+msgid "off=不启用；allow_only_in_pool=仅允许命中国际 CIDR 池；block_in_pool=命中国际池则拦截"
+msgstr "off=不启用；allow_only_in_pool=仅允许命中国际 CIDR 池；block_in_pool=命中国际池则拦截"
+
+#: models.py
+msgid "更新时间"
+msgstr "更新时间"
+
+#: models.py
+msgid "IP防护策略"
+msgstr "IP防护策略"
+
+#: models.py
+msgid "池标识"
+msgstr "池标识"
+
+#: models.py
+msgid "数据源 URL"
+msgstr "数据源 URL"
+
+#: models.py
+msgid "原始行数"
+msgstr "原始行数"
+
+#: models.py
+msgid "IPv4 合并区间数"
+msgstr "IPv4 合并区间数"
+
+#: models.py
+msgid "IPv6 网段数"
+msgstr "IPv6 网段数"
+
+#: models.py
+msgid "上次成功同步时间"
+msgstr "上次成功同步时间"
+
+#: models.py
+msgid "上次错误信息"
+msgstr "上次错误信息"
+
+#: models.py
+msgid "地理IP池同步状态"
+msgstr "地理IP池同步状态"
+
+#: models.py
+msgid "IP"
+msgstr "IP"
+
+#: models.py
+msgid "国家码"
+msgstr "国家码"
+
+#: models.py
+msgid "风险分"
+msgstr "风险分"
+
+#: models.py
+msgid "风险标签"
+msgstr "风险标签"
+
+#: models.py
+msgid "决策"
+msgstr "决策"
+
+#: models.py
+msgid "原因"
+msgstr "原因"
+
+#: models.py
+msgid "请求路径"
+msgstr "请求路径"
+
+#: models.py
+msgid "创建时间"
+msgstr "创建时间"
+
+#: models.py
+msgid "IP访问日志"
+msgstr "IP访问日志"
+
+#: models.py
+msgid "封禁原因"
+msgstr "封禁原因"
+
+#: models.py
+msgid "封禁来源"
+msgstr "封禁来源"
+
+#: models.py
+msgid "过期时间"
+msgstr "过期时间"
+
+#: models.py
+msgid "是否生效"
+msgstr "是否生效"
+
+#: models.py
+msgid "IP封禁记录"
+msgstr "IP封禁记录"
+
+#: admin.py
+msgid "批量设为生效"
+msgstr "批量设为生效"
+
+#: admin.py
+msgid "批量设为失效"
+msgstr "批量设为失效"
+
+#: middleware.py
+#, python-format
+msgid "命中 IP 黑名单: %(rule)s"
+msgstr "命中 IP 黑名单: %(rule)s"
+
+#: middleware.py
+msgid "访问被安全策略阻止"
+msgstr "访问被安全策略阻止"
+
+#: middleware.py
+msgid "超过单 IP 每分钟请求上限"
+msgstr "超过单 IP 每分钟请求上限"
+
+#: middleware.py
+msgid "IP 已被封禁"
+msgstr "IP 已被封禁"
+
+#: middleware.py
+msgid "IP 风险服务暂不可用"
+msgstr "IP 风险服务暂不可用"
+
+#: views.py
+#, python-format
+msgid "请求体过大，最大允许 %(size)s 字节"
+msgstr "请求体过大，最大允许 %(size)s 字节"
+
+#: views.py
+msgid "未登录或登录已过期"
+msgstr "未登录或登录已过期"
+
+#: views.py
+msgid "权限不足"
+msgstr "权限不足"
+
+#: views.py
+msgid "权限不足：缺少操作权限"
+msgstr "权限不足：缺少操作权限"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 仅支持两位国家码（如 CN/US）"
+msgstr "字段 %(field)s 仅支持两位国家码（如 CN/US）"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 存在非法 IP/CIDR: %(rule)s"
+msgstr "字段 %(field)s 存在非法 IP/CIDR: %(rule)s"
+
+#: views.py
+msgid "企业运营面板"
+msgstr "企业运营面板"
+
+#: views.py
+msgid "请通过以下接口查看数据："
+msgstr "请通过以下接口查看数据："
+
+#: views.py
+msgid "统计指标"
+msgstr "统计指标"
+
+#: views.py
+msgid "近几日攻击与访问汇总"
+msgstr "近几日攻击与访问汇总"
+
+#: views.py
+msgid "策略读取/更新"
+msgstr "策略读取/更新"
+
+#: views.py
+msgid "中国内/国际 CIDR 池同步状态"
+msgstr "中国内/国际 CIDR 池同步状态"
+
+#: views.py
+msgid "手动同步 CIDR 池至 Redis"
+msgstr "手动同步 CIDR 池至 Redis"
+
+#: views.py
+msgid "解封 IP"
+msgstr "解封 IP"
+
+#: views.py
+msgid "健康状态"
+msgstr "健康状态"
+
+#: views.py
+msgid "权限不足：缺少策略查看权限"
+msgstr "权限不足：缺少策略查看权限"
+
+#: views.py
+msgid "权限不足：缺少策略修改权限"
+msgstr "权限不足：缺少策略修改权限"
+
+#: views.py
+msgid "JSON 格式错误"
+msgstr "JSON 格式错误"
+
+#: views.py
+msgid "rate_limit_per_minute 必须为整数"
+msgstr "rate_limit_per_minute 必须为整数"
+
+#: views.py
+msgid "rate_limit_per_minute 范围为 0～100000（0 表示关闭）"
+msgstr "rate_limit_per_minute 范围为 0～100000（0 表示关闭）"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 必须为 JSON 数组"
+msgstr "字段 %(field)s 必须为 JSON 数组"
+
+#: views.py
+#, python-format
+msgid "字段 %(field)s 须为 off、allow_only_in_pool 或 block_in_pool"
+msgstr "字段 %(field)s 须为 off、allow_only_in_pool 或 block_in_pool"
+
+#: views.py
+msgid "策略已更新"
+msgstr "策略已更新"
+
+#: views.py
+msgid "ip 参数不能为空"
+msgstr "ip 参数不能为空"
+
+#: views.py
+msgid "解封成功"
+msgstr "解封成功"
+
+#: views.py
+msgid "封禁成功"
+msgstr "封禁成功"
+
+#: views.py
+msgid "同步任务已执行"
+msgstr "同步任务已执行"
+
+#: views.py
+msgid "用户名或密码不能为空"
+msgstr "用户名或密码不能为空"
+
+#: views.py
+msgid "用户名或密码错误"
+msgstr "用户名或密码错误"
+
+#: views.py
+msgid "该账号无后台权限"
+msgstr "该账号无后台权限"
+
+#: views.py
+msgid "登录成功"
+msgstr "登录成功"
+
+#: views.py
+msgid "JWT 登录成功"
+msgstr "JWT 登录成功"
+
+#: views.py
+msgid "refresh_token 不能为空"
+msgstr "refresh_token 不能为空"
+
+#: views.py
+msgid "refresh_token 无效或已过期"
+msgstr "refresh_token 无效或已过期"
+
+#: views.py
+msgid "刷新成功"
+msgstr "刷新成功"
+
+#: views.py
+msgid "已退出登录"
+msgstr "已退出登录"
+
+#: views.py
+msgid "JWT 已退出（请客户端删除本地 token）"
+msgstr "JWT 已退出（请客户端删除本地 token）"
+
+#: django-unfold overrides
+msgid "Filters"
+msgstr "筛选"
+
+msgid "filter"
+msgstr "筛选"
+
+msgid "No results found"
+msgstr "未找到结果"
+
+msgid "This page yielded no results. Create a new item or reset your filters."
+msgstr "当前页面没有结果。请创建新项目或重置筛选条件。"
+
+msgid "Create a new item"
+msgstr "创建新项目"
+
+msgid "Reset filters"
+msgstr "重置筛选"
+
+msgid "Search"
+msgstr "搜索"
+
+msgid "Apply filters"
+msgstr "应用筛选"
+
+msgid "Submit"
+msgstr "提交"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Delete selected"
+msgstr "删除选中"
+
+msgid "Date"
+msgstr "日期"
+
+msgid "Time"
+msgstr "时间"
+
+msgid "User"
+msgstr "用户"
+
+msgid "Action"
+msgstr "操作"
+
+msgid "Home"
+msgstr "首页"
+
+msgid "Administration"
+msgstr "管理"
+
+msgid "Recent actions"
+msgstr "最近操作"
+
+msgid "View"
+msgstr "查看"
+
+msgid "Change"
+msgstr "修改"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Add"
+msgstr "添加"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save and continue editing"
+msgstr "保存并继续编辑"
+
+msgid "Save and add another"
+msgstr "保存并添加另一个"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "Back"
+msgstr "返回"
+
+msgid "Next"
+msgstr "下一步"
+
+msgid "Previous"
+msgstr "上一步"
+
+msgid "Select"
+msgstr "选择"
+
+msgid "Select all"
+msgstr "全选"
+
+msgid "Deselect all"
+msgstr "取消全选"
+
+msgid "Export"
+msgstr "导出"
+
+msgid "Import"
+msgstr "导入"
+
+msgid "Log in"
+msgstr "登录"
+
+msgid "Log out"
+msgstr "退出"
+
+msgid "Password"
+msgstr "密码"
+
+msgid "Username"
+msgstr "用户名"
+
+msgid "Welcome"
+msgstr "欢迎"
+
+msgid "Site administration"
+msgstr "站点管理"
+
+msgid "Django administration"
+msgstr "Django 管理"
+
+msgid "IP Guard Dashboard"
+msgstr "IP安全卫士面板"
