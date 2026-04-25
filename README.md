@@ -1,55 +1,163 @@
-# django-ip-safeguard
+# django-ip-safeguard Enterprise
 
-Django IP 风险拦截插件，支持 IP 风险查询、地区规则控制和自动封禁。
+<div align="center">
+  <img src="assets/logo.svg" alt="django-ip-safeguard logo" width="180" />
+</div>
 
-## 快速开始
+<p align="center">
+  企业级 Django IP 风险防护中间件与运营控制台
+</p>
 
-1. 安装：
+<p align="center">
+  <img src="https://img.shields.io/badge/enterprise-ready-0F766E.svg" alt="enterprise-ready" />
+  <img src="https://img.shields.io/badge/security-hardened-166534.svg" alt="security-hardened" />
+  <img src="https://img.shields.io/badge/django-4.2%2B-0C4B33.svg" alt="django" />
+  <img src="https://img.shields.io/badge/python-3.9%2B-3776AB.svg" alt="python" />
+</p>
+
+## 📌 项目简介
+
+`django-ip-safeguard` 是一个面向企业生产环境的 Django 请求前置安全插件。  
+它在请求进入业务视图前完成 IP 风险识别、地区策略校验、缓存决策复用和封禁治理，并提供企业 Dashboard 与策略中心。
+
+## 🧭 企业能力总览
+
+- `🛡️ 请求前置防护`：中间件早期阻断风险流量，减少业务层压力。
+- `🌍 风险与地区策略`：支持风险分阈值、风险标签、国家白黑名单。
+- `⚙️ 策略中心`：支持数据库策略覆盖 `settings`（策略即时生效）。
+- `📊 Dashboard`：提供统计面板、策略接口、健康检查、解封接口。
+- `🔐 安全加固`：管理接口权限控制、API Key 环境变量化、IP 脱敏审计。
+- `🚀 高可用`：熔断、重试、并发去重锁、分级缓存 TTL、降级策略。
+
+## 🏗️ 企业架构说明
+
+1. 请求进入 `IpGuardMiddleware`。
+2. 读取运行时策略（数据库策略优先，其次 `settings`）。
+3. 先查封禁缓存，再查情报缓存。
+4. 缓存未命中时调用 Provider，并应用并发去重和熔断策略。
+5. 风险引擎判定放行/阻断。
+6. 记录审计日志（可配置脱敏）。
+7. Dashboard 对外提供管理与运营数据接口。
+
+## ⚡ 快速接入（企业版）
+
+### 1) 安装
 
 ```bash
 pip install django-ip-safeguard
 ```
 
-2. 在 `INSTALLED_APPS` 中加入：
+### 2) 注册 App 与中间件
 
 ```python
 INSTALLED_APPS = [
     # ...
     "django_ip_safeguard",
 ]
-```
 
-3. 在 `MIDDLEWARE` 前置加入：
-
-```python
 MIDDLEWARE = [
     "django_ip_safeguard.middleware.IpGuardMiddleware",
     # ...
 ]
 ```
 
-4. 配置示例：
+### 3) 挂载企业控制台 URL
 
 ```python
-IP_GUARD_ENABLED = True
-IP_GUARD_REDIS_URL = "redis://127.0.0.1:6379/0"
-IP_GUARD_PROVIDER = "http"  # dummy/http
-IP_GUARD_PROVIDER_ENDPOINT = "https://your-ip-intel-api.example.com/query"
-IP_GUARD_PROVIDER_API_KEY = "your-api-key"
-IP_GUARD_PROVIDER_TIMEOUT = 3.0
-IP_GUARD_PROVIDER_MAX_RETRIES = 2
-IP_GUARD_PROVIDER_RETRY_BACKOFF = 0.2
-IP_GUARD_PROVIDER_HEADERS = {"X-Source": "django-ip-safeguard"}
-IP_GUARD_RISK_SCORE_THRESHOLD = 70
-IP_GUARD_ALLOWED_COUNTRIES = ("CN", "SG")
-IP_GUARD_FAIL_OPEN = True
-IP_GUARD_FAIL_OPEN_PATH_PREFIXES = ("/public",)
-IP_GUARD_FAIL_CLOSE_PATH_PREFIXES = ("/api/login", "/api/pay")
-IP_GUARD_TRUSTED_PROXY_CIDRS = ("127.0.0.1/32",)
-IP_GUARD_USE_DB_LOG = False
+from django.urls import include, path
+
+urlpatterns = [
+    path("ip-guard/", include("django_ip_safeguard.urls")),
+]
 ```
 
-## 开发命令
+### 4) 执行迁移
+
+```bash
+python manage.py migrate
+```
+
+### 5) 设置最小生产配置
+
+```python
+import os
+
+IP_GUARD_ENABLED = True
+IP_GUARD_REDIS_URL = "redis://127.0.0.1:6379/0"
+IP_GUARD_PROVIDER = "http"
+IP_GUARD_PROVIDER_ENDPOINT = "https://risk-api.example.com/ip/query"
+IP_GUARD_PROVIDER_API_KEY = os.getenv("IP_GUARD_PROVIDER_API_KEY", "")
+IP_GUARD_RISK_SCORE_THRESHOLD = 70
+IP_GUARD_TRUSTED_PROXY_CIDRS = ("10.0.0.0/8",)
+```
+
+## 🧩 配置分组说明
+
+### `🔧 基础开关`
+
+- `IP_GUARD_ENABLED`
+- `IP_GUARD_REDIS_URL`
+- `IP_GUARD_CACHE_TTL`
+- `IP_GUARD_BAN_TTL`
+- `IP_GUARD_BLOCK_STATUS_CODE`
+- `IP_GUARD_USE_DB_LOG`
+- `IP_GUARD_ENABLE_POLICY_CENTER`
+- `IP_GUARD_POLICY_CACHE_SECONDS`
+
+### `🌐 Provider`
+
+- `IP_GUARD_PROVIDER`
+- `IP_GUARD_PROVIDER_ENDPOINT`
+- `IP_GUARD_PROVIDER_API_KEY`（建议仅环境变量）
+- `IP_GUARD_PROVIDER_TIMEOUT`
+- `IP_GUARD_PROVIDER_MAX_RETRIES`
+- `IP_GUARD_PROVIDER_RETRY_BACKOFF`
+- `IP_GUARD_PROVIDER_CIRCUIT_BREAKER_FAILURES`
+- `IP_GUARD_PROVIDER_CIRCUIT_BREAKER_TTL`
+- `IP_GUARD_PROVIDER_HEADERS`
+
+### `🛡️ 风险规则`
+
+- `IP_GUARD_RISK_SCORE_THRESHOLD`
+- `IP_GUARD_BLOCKED_RISK_TAGS`
+- `IP_GUARD_ALLOWED_COUNTRIES`
+- `IP_GUARD_BLOCKED_COUNTRIES`
+- `IP_GUARD_IP_WHITELIST`
+
+### `🧯 降级与高可用`
+
+- `IP_GUARD_FAIL_OPEN`
+- `IP_GUARD_FAIL_OPEN_PATH_PREFIXES`
+- `IP_GUARD_FAIL_CLOSE_PATH_PREFIXES`
+- `IP_GUARD_DEDUPE_LOCK_SECONDS`
+- `IP_GUARD_HIGH_RISK_CACHE_TTL`
+- `IP_GUARD_LOW_RISK_CACHE_TTL`
+
+### `🔐 审计与合规`
+
+- `IP_GUARD_IP_MASK_ENABLED`
+- `IP_GUARD_IP_MASK_KEEP_PREFIX`
+
+## 📊 Dashboard 与管理接口
+
+- `GET /ip-guard/`：企业管理面板入口
+- `GET /ip-guard/api/dashboard/`：24h 统计、Top 风险 IP、国家分布
+- `GET /ip-guard/api/policy/`：读取当前策略
+- `POST /ip-guard/api/policy/`：更新策略
+- `POST /ip-guard/api/unban/`：手动解封 IP
+- `GET /ip-guard/api/health/`：Redis/Provider/策略中心健康摘要
+
+## ✅ 企业上线检查清单
+
+- 已开启受信代理网段，避免伪造 `X-Forwarded-For`。
+- API Key 通过环境变量注入，不落盘。
+- 关键路径已设置 `fail-close`（登录/支付/管理端）。
+- 已配置白名单（办公网、探针、健康检查）。
+- 已开启审计日志与 IP 脱敏。
+- 已验证熔断、降级、Redis 异常场景行为。
+- 已跑通 `pytest` 与 `ruff`。
+
+## 🧪 开发与验证命令
 
 ```bash
 python -m venv .venv
@@ -58,3 +166,8 @@ pip install -e ".[dev]"
 pytest -q
 ruff check .
 ```
+
+## 📚 文档导航
+
+- 企业完整指南：`docs/django-ip-guard-开发与发布指南.md`
+- 企业发布流程：`docs/django-ip-guard-开发与发布指南.md` 中 “PyPI 发布流程”

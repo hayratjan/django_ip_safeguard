@@ -63,7 +63,8 @@ class HttpIpIntelProvider(BaseIpIntelProvider):
                     break
             except Exception as exc:  # noqa: BLE001
                 if attempt >= self.max_retries:
-                    raise ProviderError(f"HTTP Provider 请求失败: {exc}") from exc
+                    error_type = type(exc).__name__
+                    raise ProviderError(f"HTTP Provider 请求失败[{error_type}]: {exc}") from exc
                 sleep_seconds = self.retry_backoff * (2**attempt)
                 time.sleep(sleep_seconds)
 

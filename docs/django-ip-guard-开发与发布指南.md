@@ -1,397 +1,360 @@
-# Django IP 风险拦截插件：开发与发布指南
+# Django IP 风险拦截插件：企业级开发与发布指南
 
-## 1. 插件命名建议
+<div align="center">
+  <img src="../assets/logo.svg" alt="django-ip-safeguard logo" width="150" />
+</div>
 
-你这个插件核心能力是「IP 风险识别 + 地区准入规则 + 自动封禁」。下面是可选命名：
+<p align="center">
+  <img src="https://img.shields.io/badge/edition-enterprise-0F766E.svg" alt="enterprise" />
+  <img src="https://img.shields.io/badge/security-compliance_ready-166534.svg" alt="security" />
+  <img src="https://img.shields.io/badge/availability-high-1D4ED8.svg" alt="ha" />
+</p>
 
-- `django-ip-safeguard`（推荐，语义清晰、专业、容易记忆）
-- `django-ip-guardian`
-- `django-ip-shield`
-- `django-risk-ip-firewall`
-- `django-geoip-access-guard`
+本文档用于统一说明 `django-ip-safeguard` 的功能边界、配置方式、开发流程与发布流程，面向研发、运维与发布人员。
 
-> 推荐最终 PyPI 包名：`django-ip-safeguard`  
-> 推荐 Python 模块名：`django_ip_safeguard`
+## 📚 目录
 
----
+- `🎯 1. 项目定位与命名`
+- `🧩 2. 功能说明（全量）`
+- `⚙️ 3. 配置文档（完整）`
+- `🏗️ 4. 实现方案与结构设计`
+- `🚀 5. 开发流程与工作清单`
+- `🔐 6. 安全与运维建议`
+- `📦 7. PyPI 发布流程（详细）`
+- `✅ 8. 验收清单`
+- `📈 9. 当前进展与下一步`
 
-## 2. 需求说明（PRD 简版）
+## 🎯 1. 项目定位与命名
 
-## 2.1 目标
-
-在 Django 请求进入业务视图前完成 IP 安全校验，阻断高风险 IP 或不在允许地区范围内的请求，并记录审计日志。
-
-## 2.2 核心能力
-
-1. **请求前置校验**  
-   通过 Django Middleware 在请求早期执行 IP 风险查询与地区校验。
-
-2. **IP 情报查询**  
-   对接第三方 IP 风险/地理位置服务（可插拔 Provider）。
-
-3. **缓存与持久化**  
-   - 优先从 Redis 读取已查询结果（低延迟）  
-   - 命中失败回源查询并写入 Redis  
-   - 可选落库（数据库）用于审计与离线分析
-
-4. **风险判定引擎**  
-   支持策略：
-   - 风险分阈值（如 `risk_score >= 70` 拦截）
-   - 风险标签黑名单（代理/VPN/Tor/爬虫等）
-   - 国家/地区白名单、黑名单
-
-5. **封禁机制**  
-   命中拦截后可执行：
-   - 临时封禁（TTL）
-   - 永久封禁
-   - 返回可配置状态码（默认 `403`）与响应体
-
-6. **审计与观测**  
-   记录拦截原因、来源 IP、命中规则、查询结果、时间戳、请求路径。
-
-## 2.3 非功能需求
-
-- 高性能：请求链路增加延迟可控（例如 P95 < 15ms，缓存命中场景）
-- 高可用：外部 IP 服务异常时支持降级策略（放行/阻断可配置）
-- 可扩展：支持多家 IP 情报服务适配器
-- 可运维：日志可观测，关键指标可接入 Prometheus/Sentry
-
-## 2.4 建议配置项
-
-- `IP_GUARD_ENABLED`
-- `IP_GUARD_REDIS_URL`
-- `IP_GUARD_CACHE_TTL`
-- `IP_GUARD_PROVIDER` / `IP_GUARD_PROVIDER_API_KEY`
-- `IP_GUARD_RISK_SCORE_THRESHOLD`
-- `IP_GUARD_BLOCKED_COUNTRIES`
-- `IP_GUARD_ALLOWED_COUNTRIES`
-- `IP_GUARD_FAIL_OPEN`（外部服务失败时是否默认放行）
-- `IP_GUARD_BAN_TTL`
-- `IP_GUARD_TRUSTED_PROXY_CIDRS`
+- 项目名（PyPI）：`django-ip-safeguard`
+- Python 模块名：`django_ip_safeguard`
+- 目标：在 Django 请求进入业务视图前进行 IP 风险识别和地区规则校验，并可对风险 IP 执行封禁与审计。
 
 ---
 
-## 3. 开发流程（建议里程碑）
+## 🧩 2. 功能说明（全量）
 
-## 阶段 1：最小可用版本（MVP）
+## 2.1 请求前置拦截
 
-1. 建立 Django App 基础结构：
-   - `apps.py`
-   - `middleware.py`
-   - `services/provider.py`
-   - `services/risk_engine.py`
-   - `models.py`（可选）
-   - `conf.py`（默认配置）
+- 通过 `IpGuardMiddleware` 在中间件阶段执行安全判断。
+- 请求处理顺序：
+  1. 解析真实客户端 IP。
+  2. 检查封禁缓存。
+  3. 命中情报缓存则直接判定。
+  4. 未命中则调用 Provider 获取情报并缓存。
+  5. 执行风险引擎判定（风险分、标签、地区）。
+  6. 放行或拦截；按开关写入审计日志。
 
-2. 实现中间件流程：
-   - 提取客户端真实 IP（支持反向代理头）
-   - 查询 Redis 缓存
-   - 未命中则调用 IP Provider
-   - 风险与地区判定
-   - 命中拦截则返回 `403`
+## 2.2 IP 情报查询（Provider）
 
-3. 完成基础单测：
-   - 缓存命中/未命中
-   - 风险阈值拦截
-   - 国家黑白名单判定
-   - Provider 异常降级
+- `dummy`：本地占位实现，便于开发联调。
+- `http`：真实 HTTP 风控服务实现，支持：
+  - 超时控制
+  - 重试次数
+  - 指数退避
+  - 自定义请求头
+  - API Key 注入
 
-## 阶段 2：增强能力
+## 2.3 缓存与封禁
 
-1. 加入封禁表与审计日志表（可选）
-2. 增加管理后台（Django Admin）查看 IP 记录和封禁状态
-3. 增加信号与回调，支持业务自定义拦截逻辑
-4. 指标埋点：请求总数、拦截数、命中率、Provider 延迟
+- Redis 情报缓存：减少外部调用和响应延迟。
+- Redis 封禁缓存：命中后直接拦截。
+- 封禁支持 TTL，可配置封禁时长。
 
-## 阶段 3：工程化与发布准备
+## 2.4 规则引擎
 
-1. 补齐文档（快速开始、配置说明、FAQ）
-2. 覆盖 CI（lint + test + build）
-3. 进行语义化版本管理（SemVer）
-4. 准备 PyPI 发布材料
+- 风险分阈值策略（`risk_score >= threshold`）。
+- 风险标签黑名单策略（VPN/Tor/Proxy 等）。
+- 国家白名单/黑名单策略。
+
+## 2.5 降级策略
+
+- 全局降级：`IP_GUARD_FAIL_OPEN`。
+- 路径级降级：
+  - `IP_GUARD_FAIL_OPEN_PATH_PREFIXES`
+  - `IP_GUARD_FAIL_CLOSE_PATH_PREFIXES`
+- 路径策略优先于全局策略。
+
+## 2.6 审计能力
+
+- 可选将访问决策写入数据库模型 `IpAccessLog`。
+- 可记录放行/拦截、风险分、地区、原因、请求路径等信息。
 
 ---
 
-## 4. 包结构建议
+## ⚙️ 3. 配置文档（完整）
 
-```text
-django_ip_safeguard/
-  __init__.py
-  apps.py
-  conf.py
-  middleware.py
-  exceptions.py
-  types.py
-  services/
-    __init__.py
-    provider_base.py
-    provider_xxx.py
-    risk_engine.py
-    cache.py
-  models.py
-  admin.py
-  migrations/
-tests/
-docs/
-pyproject.toml
-README.md
-LICENSE
+## 3.1 基础配置
+
+- `IP_GUARD_ENABLED`：是否启用插件，默认 `True`
+- `IP_GUARD_REDIS_URL`：Redis 地址，默认 `redis://127.0.0.1:6379/0`
+- `IP_GUARD_CACHE_TTL`：情报缓存 TTL（秒），默认 `3600`
+- `IP_GUARD_BAN_TTL`：封禁缓存 TTL（秒），默认 `86400`
+- `IP_GUARD_BLOCK_STATUS_CODE`：拦截状态码，默认 `403`
+- `IP_GUARD_USE_DB_LOG`：是否写数据库审计日志，默认 `False`
+- `IP_GUARD_ENABLE_POLICY_CENTER`：是否启用数据库策略中心，默认 `True`
+- `IP_GUARD_POLICY_CACHE_SECONDS`：策略缓存秒数，默认 `30`
+- `IP_GUARD_IP_MASK_ENABLED`：审计日志 IP 脱敏开关，默认 `True`
+- `IP_GUARD_IP_MASK_KEEP_PREFIX`：审计日志 IP 脱敏保留段数，默认 `2`
+
+## 3.2 Provider 配置
+
+- `IP_GUARD_PROVIDER`：`dummy` / `http`
+- `IP_GUARD_PROVIDER_ENDPOINT`：HTTP Provider 接口地址
+- `IP_GUARD_PROVIDER_API_KEY`：API 密钥（建议环境变量注入）
+- `IP_GUARD_PROVIDER_TIMEOUT`：请求超时，默认 `3.0`
+- `IP_GUARD_PROVIDER_MAX_RETRIES`：最大重试次数，默认 `2`
+- `IP_GUARD_PROVIDER_RETRY_BACKOFF`：退避基数秒数，默认 `0.2`
+- `IP_GUARD_PROVIDER_HEADERS`：附加请求头
+- `IP_GUARD_PROVIDER_CIRCUIT_BREAKER_FAILURES`：熔断触发失败次数，默认 `5`
+- `IP_GUARD_PROVIDER_CIRCUIT_BREAKER_TTL`：熔断统计窗口秒数，默认 `60`
+
+## 3.3 风险规则配置
+
+- `IP_GUARD_RISK_SCORE_THRESHOLD`：风险分阈值，默认 `70`
+- `IP_GUARD_BLOCKED_RISK_TAGS`：风险标签黑名单，默认 `("TOR", "PROXY", "VPN")`
+- `IP_GUARD_ALLOWED_COUNTRIES`：国家白名单（配置后只允许名单内国家）
+- `IP_GUARD_BLOCKED_COUNTRIES`：国家黑名单
+- `IP_GUARD_IP_WHITELIST`：IP 白名单（命中直接放行）
+
+## 3.4 代理与降级配置
+
+- `IP_GUARD_TRUSTED_PROXY_CIDRS`：受信代理网段，仅在该条件下使用 `X-Forwarded-For`
+- `IP_GUARD_FAIL_OPEN`：Provider 异常时全局默认是否放行
+- `IP_GUARD_FAIL_OPEN_PATH_PREFIXES`：强制放行路径前缀
+- `IP_GUARD_FAIL_CLOSE_PATH_PREFIXES`：强制拦截路径前缀
+- `IP_GUARD_DEDUPE_LOCK_SECONDS`：并发查询去重锁秒数，默认 `3`
+- `IP_GUARD_HIGH_RISK_CACHE_TTL`：高风险缓存秒数，默认 `7200`
+- `IP_GUARD_LOW_RISK_CACHE_TTL`：低风险缓存秒数，默认 `1800`
+
+## 3.5 生产配置示例
+
+```python
+import os
+
+IP_GUARD_ENABLED = True
+IP_GUARD_REDIS_URL = "redis://127.0.0.1:6379/0"
+IP_GUARD_CACHE_TTL = 3600
+IP_GUARD_BAN_TTL = 86400
+
+IP_GUARD_PROVIDER = "http"
+IP_GUARD_PROVIDER_ENDPOINT = "https://risk-api.example.com/ip/query"
+IP_GUARD_PROVIDER_API_KEY = os.getenv("IP_GUARD_PROVIDER_API_KEY", "")
+IP_GUARD_PROVIDER_TIMEOUT = 2.5
+IP_GUARD_PROVIDER_MAX_RETRIES = 2
+IP_GUARD_PROVIDER_RETRY_BACKOFF = 0.2
+IP_GUARD_PROVIDER_CIRCUIT_BREAKER_FAILURES = 5
+IP_GUARD_PROVIDER_CIRCUIT_BREAKER_TTL = 60
+IP_GUARD_PROVIDER_HEADERS = {"X-Source": "django-ip-safeguard"}
+
+IP_GUARD_RISK_SCORE_THRESHOLD = 70
+IP_GUARD_BLOCKED_RISK_TAGS = ("TOR", "VPN", "PROXY")
+IP_GUARD_ALLOWED_COUNTRIES = ("CN", "SG")
+IP_GUARD_BLOCKED_COUNTRIES = ()
+IP_GUARD_IP_WHITELIST = ("127.0.0.1",)
+
+IP_GUARD_FAIL_OPEN = True
+IP_GUARD_FAIL_OPEN_PATH_PREFIXES = ("/health", "/public")
+IP_GUARD_FAIL_CLOSE_PATH_PREFIXES = ("/api/login", "/api/pay")
+IP_GUARD_TRUSTED_PROXY_CIDRS = ("10.0.0.0/8", "172.16.0.0/12")
+IP_GUARD_DEDUPE_LOCK_SECONDS = 3
+IP_GUARD_HIGH_RISK_CACHE_TTL = 7200
+IP_GUARD_LOW_RISK_CACHE_TTL = 1800
+
+IP_GUARD_BLOCK_STATUS_CODE = 403
+IP_GUARD_USE_DB_LOG = True
+IP_GUARD_ENABLE_POLICY_CENTER = True
+IP_GUARD_POLICY_CACHE_SECONDS = 30
+IP_GUARD_IP_MASK_ENABLED = True
+IP_GUARD_IP_MASK_KEEP_PREFIX = 2
 ```
 
+## 3.6 企业 Dashboard 路由接入
+
+在项目 `urls.py` 中挂载插件管理入口：
+
+```python
+from django.urls import include, path
+
+urlpatterns = [
+    path("ip-guard/", include("django_ip_safeguard.urls")),
+]
+```
+
+可用接口：
+
+- `/ip-guard/`：Dashboard 页面
+- `/ip-guard/api/dashboard/`：运营统计
+- `/ip-guard/api/policy/`：策略读取/更新（GET/POST）
+- `/ip-guard/api/unban/`：手动解封（POST）
+- `/ip-guard/api/health/`：健康状态
+
 ---
 
-## 5. PyPI 发布流程（详细）
+## 🏗️ 4. 实现方案与结构设计
 
-## 5.1 准备账号与凭据
+## 4.1 模块职责
+
+- `middleware.py`：请求总编排
+- `conf.py`：配置读取与默认值
+- `services/ip_resolver.py`：真实 IP 提取与代理信任判断
+- `services/cache.py`：Redis 缓存读写
+- `services/provider_base.py`：Provider 抽象
+- `services/provider_http.py`：HTTP Provider 实现
+- `services/provider_factory.py`：Provider 构建工厂
+- `services/policy_service.py`：策略中心加载与缓存
+- `services/risk_engine.py`：规则引擎
+- `services/ban_service.py`：封禁写入
+- `services/audit_service.py`：审计写库
+- `models.py`：审计与封禁模型
+- `urls.py` / `views.py`：企业 Dashboard 与策略管理接口
+
+## 4.2 关键设计原则
+
+- 优先缓存，减少第三方依赖抖动对主链路影响。
+- Provider 可插拔，避免业务逻辑依赖单一供应商。
+- 降级可控，保障关键路径安全策略可按路径差异化执行。
+- 审计可开关，平衡性能与可追溯性。
+
+---
+
+## 🚀 5. 开发流程与工作清单
+
+## 5.1 开发前准备
+
+- Python `>=3.9`，Django `>=4.2`，Redis `>=6`
+- 安装开发依赖：`pytest`、`pytest-django`、`ruff`、`build`、`twine`
+- 准备测试风控 API Key（沙箱）
+- 准备示例 Django 项目用于联调
+
+## 5.2 推荐开发节奏
+
+1. 先完成配置与中间件主链路。
+2. 再接入 Provider 与缓存。
+3. 然后实现规则引擎和降级策略。
+4. 最后补齐测试、文档、CI 与发布材料。
+
+## 5.3 每次迭代固定流程
+
+1. 编写或更新规则说明。
+2. 实现功能并补齐单测。
+3. 执行 `pytest` 与 `ruff`。
+4. 更新 `README` 与本指南。
+5. 更新 `CHANGELOG`。
+
+---
+
+## 🔐 6. 安全与运维建议
+
+## 6.1 安全建议
+
+- 不在仓库保存 API Key，统一用环境变量或密钥平台。
+- 只信任明确代理网段，避免 `X-Forwarded-For` 伪造绕过。
+- 关键路径建议设置 `fail-close`，如登录、支付、管理接口。
+- 为内部办公出口或监控探针设置白名单，降低误杀风险。
+
+## 6.2 运维建议
+
+- 监控以下指标：
+  - Provider 错误率
+  - Provider 超时率
+  - 缓存命中率
+  - 拦截率与误拦率
+- 设置告警：
+  - Provider 连续失败
+  - 拦截率突增
+  - Redis 不可用
+
+## 6.3 合规建议
+
+- IP 数据属于敏感数据，建议最小化存储并设定保留周期。
+- 审计日志中可按需脱敏存储 IP（如保留网段，掩码尾段）。
+
+## 6.4 企业安全基线建议
+
+- 配置变更需走变更审批与审计留痕。
+- 管理接口建议放在内网或通过零信任网关访问。
+- 对策略更新接口启用最小权限控制（仅安全管理员角色）。
+- 建议定期执行策略回放与误拦复盘，形成安全运营闭环。
+
+---
+
+## 📦 7. PyPI 发布流程（详细）
+
+## 7.1 准备账号与凭据
 
 1. 注册账号：
    - TestPyPI: [https://test.pypi.org/](https://test.pypi.org/)
    - PyPI: [https://pypi.org/](https://pypi.org/)
+2. 开启 2FA。
+3. 创建 API Token（TestPyPI 与 PyPI 分开）。
 
-2. 开启 2FA（建议强制开启）
-3. 创建 API Token：
-   - TestPyPI token
-   - PyPI token
-
-## 5.2 配置项目元数据（`pyproject.toml`）
-
-关键字段建议：
-
-- `name = "django-ip-safeguard"`
-- `version = "0.1.0"`
-- `description`
-- `readme = "README.md"`
-- `requires-python = ">=3.9"`
-- `dependencies`（如 `Django>=4.2`, `redis>=5.0.0`, `httpx>=0.27.0`）
-- `classifiers`
-- `license`
-- `project.urls`
-
-## 5.3 本地构建与检查
+## 7.2 构建与校验
 
 ```bash
 python -m pip install --upgrade build twine
 python -m build
-twine check dist/*
+python -m twine check dist/*
 ```
 
-成功后会生成：
-- `dist/*.whl`
-- `dist/*.tar.gz`
-
-## 5.4 先发布到 TestPyPI 验证
+## 7.3 发布到 TestPyPI
 
 ```bash
-twine upload --repository testpypi dist/*
+export TWINE_USERNAME=__token__
+export TWINE_PASSWORD='pypi-你的TestPyPIToken'
+python -m twine upload --repository-url https://test.pypi.org/legacy/ dist/*
 ```
 
-安装验证：
+验证安装：
 
 ```bash
 pip install -i https://test.pypi.org/simple/ django-ip-safeguard
 ```
 
-## 5.5 正式发布到 PyPI
-
-```bash
-twine upload dist/*
-```
-
-建议使用环境变量传 token：
+## 7.4 发布到正式 PyPI
 
 ```bash
 export TWINE_USERNAME=__token__
-export TWINE_PASSWORD=pypi-xxxxxxxxxxxxxxxx
-twine upload dist/*
+export TWINE_PASSWORD='pypi-你的PyPIToken'
+python -m twine upload dist/*
 ```
 
-## 5.6 发布后检查
+## 7.5 发布备注（实操）
 
-1. 在 PyPI 页面确认描述与版本正确
-2. 新建干净虚拟环境进行安装回归：
-   - `pip install django-ip-safeguard==0.1.0`
-3. 运行最小 Django Demo 验证中间件可工作
-
-## 5.7 版本迭代规范（推荐）
-
-- `0.1.0`：首个可用版本
-- `0.1.1`：仅修复问题
-- `0.2.0`：新增兼容性功能
-- `1.0.0`：接口稳定、可生产使用
-
-发布节奏建议：
-
-1. 修改版本号
-2. 更新 `CHANGELOG.md`
-3. 重新构建并执行测试
-4. 发布到 TestPyPI
-5. 验证通过后发布正式 PyPI
+- 推荐顺序：先 TestPyPI，再正式 PyPI。
+- 如果出现 `File already exists`，需先修改 `version` 再重新构建上传。
+- 发布后检查项目页：`https://pypi.org/project/django-ip-safeguard/`。
+- 发布前确认 `README` 可渲染、依赖正确、安装命令可用。
 
 ---
 
-## 6. 验收清单
+## ✅ 8. 验收清单
 
-- [ ] 中间件可正确识别客户端真实 IP
-- [ ] Redis 缓存生效，重复请求不重复查情报
-- [ ] 风险阈值、标签、地区策略可配置
-- [ ] 命中风险策略可成功阻断并返回自定义响应
-- [ ] Provider 异常时降级策略符合预期
-- [ ] 审计日志可追踪到每次拦截原因
-- [ ] 单测覆盖核心判定链路
+- [ ] 真实 IP 提取逻辑在代理场景下验证通过
+- [ ] Redis 缓存命中与回源逻辑验证通过
+- [ ] 风险分、标签、地区规则验证通过
+- [ ] `fail-open/fail-close` 路径策略验证通过
+- [ ] 审计写库开关验证通过
+- [ ] `pytest`、`ruff` 全部通过
 - [ ] TestPyPI 与 PyPI 发布成功
+- [ ] 企业控制台 URL、权限与审计日志验证通过
+- [ ] 高可用能力（熔断/去重锁/分级缓存）验证通过
 
 ---
 
-## 7. 主要功能与实现方案（可直接开发）
+## 📈 9. 当前进展与下一步
 
-## 7.1 请求处理主链路
+已完成：
 
-1. `IpGuardMiddleware` 在请求进入视图前执行。
-2. 通过 `X-Forwarded-For` + `REMOTE_ADDR` 提取真实客户端 IP（仅信任配置的代理网段）。
-3. 查询封禁缓存（Redis `ban:{ip}`）：
-   - 命中：直接返回拦截响应。
-   - 未命中：继续。
-4. 查询情报缓存（Redis `intel:{ip}`）：
-   - 命中：使用缓存结果。
-   - 未命中：调用 Provider 获取风险/地区信息并回写缓存。
-5. 调用风险引擎判定：
-   - 风险分超阈值或命中风险标签 -> 拦截。
-   - 地区不符合白/黑名单规则 -> 拦截。
-6. 命中拦截时：
-   - 写入封禁缓存（可配置 TTL）
-   - 可选写入数据库审计表
-   - 返回 `403` 或自定义响应
-7. 放行请求进入业务视图。
+- Provider 工厂与 HTTP Provider（含重试与退避）
+- 中间件接入可配置 Provider
+- 路径级降级策略
+- 数据库审计写入开关
+- 单测与文档基础完善
 
-## 7.2 核心模块拆分
-
-- `middleware.py`：请求拦截入口与主流程编排
-- `services/ip_resolver.py`：客户端真实 IP 提取与校验
-- `services/cache.py`：Redis 读写封装
-- `services/provider_base.py`：Provider 抽象基类
-- `services/provider_http.py`：HTTP Provider 默认实现
-- `services/risk_engine.py`：风险与地区策略判定
-- `services/ban_service.py`：封禁写入与解除能力
-- `models.py`：`IpAccessLog`、`IpBanRecord`（可选）
-- `conf.py`：插件配置读取与默认值
-
-## 7.3 数据模型建议（可选落库）
-
-1. `IpAccessLog`
-   - `ip`
-   - `country_code`
-   - `risk_score`
-   - `risk_tags`
-   - `decision`（allow/block）
-   - `reason`
-   - `path`
-   - `created_at`
-
-2. `IpBanRecord`
-   - `ip`
-   - `ban_reason`
-   - `ban_source`（rule/manual）
-   - `expired_at`
-   - `is_active`
-   - `created_at`
-
-## 7.4 关键设计决策
-
-- **优先缓存**：所有请求先查 Redis，降低外部 API 依赖与延迟。
-- **Provider 可插拔**：后续切换不同 IP 服务不影响核心流程。
-- **失败可降级**：外部服务故障时按配置 `FAIL_OPEN/FAIL_CLOSE` 处理。
-- **规则可扩展**：风险分、标签、地区策略统一在风险引擎实现，便于新增规则。
-
----
-
-## 8. 开发前准备清单（马上执行）
-
-## 8.1 本地环境
-
-- Python `>=3.9`
-- Django `>=4.2`
-- Redis `>=6`
-- 推荐工具：`ruff`、`pytest`、`pytest-django`、`mypy`（可选）
-
-## 8.2 工程初始化
-
-- [ ] 初始化 `pyproject.toml`
-- [ ] 初始化包结构 `django_ip_safeguard/`
-- [ ] 增加基础 `README.md`、`CHANGELOG.md`、`LICENSE`
-- [ ] 增加 `tests/` 测试目录
-- [ ] 增加 `.gitignore` 与 CI 工作流
-
-## 8.3 运行与联调资源
-
-- [ ] 准备一个本地 Django 示例项目（用于联调中间件）
-- [ ] 准备 Redis 实例（本地或 Docker）
-- [ ] 准备一个测试用 IP 情报 API Key（沙箱/免费版本）
-
-## 8.4 发布准备
-
-- [ ] 创建 TestPyPI 与 PyPI 账号
-- [ ] 创建 API Token
-- [ ] 配置本地发布环境变量
-- [ ] 完成 `python -m build` 与 `twine check`
-
----
-
-## 9. 工作流程（执行节奏）
-
-## 9.1 第一周：MVP 闭环
-
-1. Day 1：完成项目骨架与配置模块
-2. Day 2：实现 `ip_resolver` + `cache` 能力
-3. Day 3：实现 Provider 与风险引擎
-4. Day 4：实现 Middleware 与拦截响应
-5. Day 5：补齐单测并在示例项目联调
-
-## 9.2 第二周：可发布版本
-
-1. 增加可选数据库审计模型
-2. 完善日志、异常与降级策略
-3. 补充文档（快速开始 + 配置说明 + FAQ）
-4. 打包并发布到 TestPyPI 验证
-5. 发布 `0.1.0` 到正式 PyPI
-
-## 9.3 每次迭代固定流程
-
-1. 更新需求与规则清单
-2. 实现代码 + 编写测试
-3. 本地验证（lint + test）
-4. 更新文档与变更记录
-5. 构建并发布
-
----
-
-## 10. 开工命令模板
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-pip install -e ".[dev]"
-pytest -q
-ruff check .
-python -m build
-```
-
----
-
-## 11. 当前真实开发进展（已完成）
-
-- 已完成 Provider 工厂：支持按配置切换 `dummy` 与 `http` Provider。
-- 已完成 HTTP Provider 基础实现：支持 `endpoint`、`api_key`、`timeout`、自定义请求头。
-- 已完成 HTTP Provider 重试：支持最大重试次数与指数退避。
-- 已完成中间件接入 Provider 工厂：无需改代码，只通过 Django `settings` 即可切换实现。
-- 已完成按路径降级策略：支持 `fail_open_path_prefixes` 与 `fail_close_path_prefixes`。
-- 已完成数据库审计写入开关：`IP_GUARD_USE_DB_LOG=True` 时记录放行/拦截决策。
-- 已补充 Provider 相关单测：覆盖工厂构建与 HTTP 返回数据解析流程。
-- 已补充中间件策略单测：覆盖按路径放行/阻断的降级策略判断。
-
-当前待继续事项：
+下一步建议：
 
 1. 增加中间件集成测试（RequestFactory + Redis mock）
 2. 增加缓存穿透保护（同 IP 并发去重锁）
-3. 完成 Admin 审计筛选与批量封禁工具
+3. 增强 Admin 管理能力（批量封禁、快速解封、筛选检索）
 

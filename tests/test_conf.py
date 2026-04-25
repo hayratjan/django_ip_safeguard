@@ -6,3 +6,6 @@ def test_default_settings_shape():
     assert isinstance(cfg.enabled, bool)
     assert isinstance(cfg.cache_ttl, int)
     assert cfg.block_status_code == 403
+    assert cfg.enable_policy_center is True
+    assert cfg.provider_circuit_breaker_failures == 5
+    assert cfg.high_risk_cache_ttl > cfg.low_risk_cache_ttl

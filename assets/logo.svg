@@ -1,0 +1,50 @@
+<svg width="260" height="260" viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Django IP Safeguard Enterprise Logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F766E"/>
+      <stop offset="100%" stop-color="#0B3C5D"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#15803D"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="260" height="260" rx="32" fill="url(#bg)"/>
+
+  <!-- Top brand line -->
+  <text x="130" y="28" text-anchor="middle" font-size="14" fill="#D1FAE5" font-family="Arial, Helvetica, sans-serif" letter-spacing="1.2">DJANGO</text>
+
+  <!-- Network ring to express IP/network defense -->
+  <circle cx="130" cy="118" r="72" fill="none" stroke="url(#ring)" stroke-width="2.5" opacity="0.75"/>
+  <circle cx="130" cy="118" r="56" fill="none" stroke="#BFDBFE" stroke-width="1.2" opacity="0.45"/>
+
+  <!-- Nodes -->
+  <circle cx="130" cy="46" r="4.2" fill="#E2E8F0"/>
+  <circle cx="198" cy="118" r="4.2" fill="#E2E8F0"/>
+  <circle cx="130" cy="190" r="4.2" fill="#E2E8F0"/>
+  <circle cx="62" cy="118" r="4.2" fill="#E2E8F0"/>
+  <line x1="130" y1="46" x2="130" y2="80" stroke="#CBD5E1" stroke-width="1.4" opacity="0.6"/>
+  <line x1="198" y1="118" x2="164" y2="118" stroke="#CBD5E1" stroke-width="1.4" opacity="0.6"/>
+  <line x1="130" y1="190" x2="130" y2="156" stroke="#CBD5E1" stroke-width="1.4" opacity="0.6"/>
+  <line x1="62" y1="118" x2="96" y2="118" stroke="#CBD5E1" stroke-width="1.4" opacity="0.6"/>
+
+  <!-- Shield -->
+  <path d="M130 48 L198 77 L191 145 C186 179 161 206 130 220 C99 206 74 179 69 145 L62 77 Z" fill="url(#shield)" stroke="#DCFCE7" stroke-width="4"/>
+
+  <!-- Globe in shield -->
+  <circle cx="130" cy="122" r="30" fill="#F0FDF4" opacity="0.96"/>
+  <ellipse cx="130" cy="122" rx="20" ry="30" fill="none" stroke="#15803D" stroke-width="1.5" opacity="0.85"/>
+  <ellipse cx="130" cy="122" rx="10" ry="30" fill="none" stroke="#15803D" stroke-width="1.2" opacity="0.75"/>
+  <path d="M100 122 H160 M103 110 H157 M103 134 H157" stroke="#15803D" stroke-width="1.2" opacity="0.75"/>
+
+  <!-- Protection check mark -->
+  <path d="M114 123 L126 135 L148 112" fill="none" stroke="#14532D" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Product name -->
+  <text x="130" y="242" text-anchor="middle" font-size="13" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif">django-ip-safeguard</text>
+</svg>

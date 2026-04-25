@@ -20,30 +20,98 @@ class RedisCacheService:
     def _ban_key(ip: str) -> str:
         return f"ip_guard:ban:{ip}"
 
+    @staticmethod
+    def _dedupe_key(ip: str) -> str:
+        return f"ip_guard:lock:intel:{ip}"
+
+    @staticmethod
+    def _circuit_key() -> str:
+        return "ip_guard:provider:circuit_failures"
+
     def get_ip_intel(self, ip: str) -> Optional[IpIntel]:
-        raw = self.client.get(self._intel_key(ip))
-        if not raw:
+        try:
+            raw = self.client.get(self._intel_key(ip))
+            if not raw:
+                return None
+            data = json.loads(raw)
+            return IpIntel(**data)
+        except Exception:  # noqa: BLE001
             return None
-        data = json.loads(raw)
-        return IpIntel(**data)
 
     def set_ip_intel(self, ip_intel: IpIntel, ttl: int) -> None:
-        self.client.setex(
-            self._intel_key(ip_intel.ip),
-            ttl,
-            json.dumps(
-                {
-                    "ip": ip_intel.ip,
-                    "country_code": ip_intel.country_code,
-                    "risk_score": ip_intel.risk_score,
-                    "risk_tags": ip_intel.risk_tags,
-                    "source": ip_intel.source,
-                }
-            ),
-        )
+        try:
+            self.client.setex(
+                self._intel_key(ip_intel.ip),
+                ttl,
+                json.dumps(
+                    {
+                        "ip": ip_intel.ip,
+                        "country_code": ip_intel.country_code,
+                        "risk_score": ip_intel.risk_score,
+                        "risk_tags": ip_intel.risk_tags,
+                        "source": ip_intel.source,
+                    }
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            return None
 
     def is_banned(self, ip: str) -> bool:
-        return bool(self.client.get(self._ban_key(ip)))
+        try:
+            return bool(self.client.get(self._ban_key(ip)))
+        except Exception:  # noqa: BLE001
+            return False
 
     def set_ban(self, ip: str, reason: str, ttl: int) -> None:
-        self.client.setex(self._ban_key(ip), ttl, reason)
+        try:
+            self.client.setex(self._ban_key(ip), ttl, reason)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def unban(self, ip: str) -> None:
+        try:
+            self.client.delete(self._ban_key(ip))
+        except Exception:  # noqa: BLE001
+            return None
+
+    def ping(self) -> bool:
+        try:
+            return bool(self.client.ping())
+        except Exception:  # noqa: BLE001
+            return False
+
+    def acquire_intel_lock(self, ip: str, ttl: int) -> bool:
+        try:
+            return bool(self.client.set(self._dedupe_key(ip), "1", nx=True, ex=ttl))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def release_intel_lock(self, ip: str) -> None:
+        try:
+            self.client.delete(self._dedupe_key(ip))
+        except Exception:  # noqa: BLE001
+            return None
+
+    def increase_provider_failures(self, ttl: int) -> int:
+        try:
+            count = self.client.incr(self._circuit_key())
+            if count == 1:
+                self.client.expire(self._circuit_key(), ttl)
+            return int(count)
+        except Exception:  # noqa: BLE001
+            return 0
+
+    def clear_provider_failures(self) -> None:
+        try:
+            self.client.delete(self._circuit_key())
+        except Exception:  # noqa: BLE001
+            return None
+
+    def get_provider_failures(self) -> int:
+        try:
+            raw = self.client.get(self._circuit_key())
+            if raw is None:
+                return 0
+            return int(raw)
+        except Exception:  # noqa: BLE001
+            return 0

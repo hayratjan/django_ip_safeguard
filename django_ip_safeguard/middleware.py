@@ -8,6 +8,7 @@ from django_ip_safeguard.services.ban_service import ban_ip
 from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.ip_resolver import resolve_client_ip
 from django_ip_safeguard.services.provider_factory import build_provider
+from django_ip_safeguard.services.policy_service import load_effective_policy
 from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
 
 logger = logging.getLogger(__name__)
@@ -35,67 +36,106 @@ class IpGuardMiddleware:
         self.provider = build_provider(self.config)
 
     def __call__(self, request):
-        if not self.config.enabled:
+        runtime_config = load_effective_policy(self.config)
+
+        if not runtime_config.enabled:
             return self.get_response(request)
 
-        client_ip = resolve_client_ip(request, self.config.trusted_proxy_cidrs)
+        client_ip = resolve_client_ip(request, runtime_config.trusted_proxy_cidrs)
         if not client_ip:
+            return self.get_response(request)
+
+        if client_ip in runtime_config.ip_whitelist:
             return self.get_response(request)
 
         if self.cache_service.is_banned(client_ip):
             return JsonResponse(
                 {"detail": "IP 已被封禁", "ip": client_ip},
-                status=self.config.block_status_code,
+                status=runtime_config.block_status_code,
             )
 
         ip_intel = self.cache_service.get_ip_intel(client_ip)
         if not ip_intel:
+            if self._is_provider_circuit_open(runtime_config):
+                logger.warning("Provider 熔断生效，跳过外部请求。")
+                return self._handle_provider_failed(request, runtime_config)
+
+            lock_acquired = self.cache_service.acquire_intel_lock(
+                client_ip, ttl=runtime_config.dedupe_lock_seconds
+            )
+            if not lock_acquired:
+                # 并发请求场景下其他请求正在查询，优先降级避免击穿。
+                return self._handle_provider_failed(request, runtime_config)
             try:
                 ip_intel = self.provider.fetch_ip_intel(client_ip)
-                self.cache_service.set_ip_intel(ip_intel, ttl=self.config.cache_ttl)
+                ttl = (
+                    runtime_config.high_risk_cache_ttl
+                    if ip_intel.risk_score >= runtime_config.risk_score_threshold
+                    else runtime_config.low_risk_cache_ttl
+                )
+                self.cache_service.set_ip_intel(ip_intel, ttl=ttl)
+                self.cache_service.clear_provider_failures()
             except Exception as exc:  # noqa: BLE001
                 logger.exception("IP 情报查询失败: %s", exc)
-                fail_open_now = should_fail_open(
-                    path=request.path,
-                    default_fail_open=self.config.fail_open,
-                    open_prefixes=self.config.fail_open_path_prefixes,
-                    close_prefixes=self.config.fail_close_path_prefixes,
+                failure_count = self.cache_service.increase_provider_failures(
+                    runtime_config.provider_circuit_breaker_ttl
                 )
-                if fail_open_now:
-                    return self.get_response(request)
-                return JsonResponse(
-                    {"detail": "IP 风险服务暂不可用"},
-                    status=self.config.block_status_code,
-                )
+                logger.warning("Provider 失败次数: %s", failure_count)
+                return self._handle_provider_failed(request, runtime_config)
+            finally:
+                if lock_acquired:
+                    self.cache_service.release_intel_lock(client_ip)
 
-        decision = evaluate_ip_risk(ip_intel, self.config)
+        decision = evaluate_ip_risk(ip_intel, runtime_config)
         if not decision.allow:
             log_access_decision(
-                enabled=self.config.use_db_log,
+                enabled=runtime_config.use_db_log,
                 ip=client_ip,
                 path=request.path,
                 decision="block",
                 reason=decision.reason,
                 ip_intel=ip_intel,
+                ip_mask_enabled=runtime_config.ip_mask_enabled,
+                ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
             if decision.should_ban:
                 ban_ip(
                     cache_service=self.cache_service,
                     ip=client_ip,
                     reason=decision.reason,
-                    ban_ttl=decision.ban_ttl or self.config.ban_ttl,
+                    ban_ttl=decision.ban_ttl or runtime_config.ban_ttl,
                 )
             return JsonResponse(
                 {"detail": "访问被安全策略阻止", "reason": decision.reason, "ip": client_ip},
-                status=self.config.block_status_code,
+                status=runtime_config.block_status_code,
             )
 
         log_access_decision(
-            enabled=self.config.use_db_log,
+            enabled=runtime_config.use_db_log,
             ip=client_ip,
             path=request.path,
             decision="allow",
             reason=decision.reason,
             ip_intel=ip_intel,
+            ip_mask_enabled=runtime_config.ip_mask_enabled,
+            ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
         )
         return self.get_response(request)
+
+    def _handle_provider_failed(self, request, runtime_config):
+        fail_open_now = should_fail_open(
+            path=request.path,
+            default_fail_open=runtime_config.fail_open,
+            open_prefixes=runtime_config.fail_open_path_prefixes,
+            close_prefixes=runtime_config.fail_close_path_prefixes,
+        )
+        if fail_open_now:
+            return self.get_response(request)
+        return JsonResponse(
+            {"detail": "IP 风险服务暂不可用"},
+            status=runtime_config.block_status_code,
+        )
+
+    def _is_provider_circuit_open(self, runtime_config) -> bool:
+        failures = self.cache_service.get_provider_failures()
+        return failures >= runtime_config.provider_circuit_breaker_failures

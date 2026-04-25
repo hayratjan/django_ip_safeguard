@@ -1,6 +1,30 @@
 from django.db import models
 
 
+class IpGuardPolicy(models.Model):
+    """IP 防护策略中心（企业版）。"""
+
+    name = models.CharField("策略名", max_length=64, unique=True, default="default")
+    enabled = models.BooleanField("启用防护", default=True)
+    risk_score_threshold = models.IntegerField("风险阈值", default=70)
+    blocked_risk_tags = models.JSONField("风险标签黑名单", default=list, blank=True)
+    allowed_countries = models.JSONField("国家白名单", default=list, blank=True)
+    blocked_countries = models.JSONField("国家黑名单", default=list, blank=True)
+    ip_whitelist = models.JSONField("IP白名单", default=list, blank=True)
+    fail_open = models.BooleanField("全局失败放行", default=True)
+    fail_open_path_prefixes = models.JSONField("按路径失败放行", default=list, blank=True)
+    fail_close_path_prefixes = models.JSONField("按路径失败阻断", default=list, blank=True)
+    block_status_code = models.IntegerField("拦截状态码", default=403)
+    cache_ttl = models.IntegerField("情报缓存TTL", default=3600)
+    ban_ttl = models.IntegerField("封禁TTL", default=86400)
+    use_db_log = models.BooleanField("记录数据库审计", default=False)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
+
+    class Meta:
+        verbose_name = "IP防护策略"
+        verbose_name_plural = "IP防护策略"
+
+
 class IpAccessLog(models.Model):
     """IP 访问决策日志。"""
 
