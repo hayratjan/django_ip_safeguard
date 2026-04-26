@@ -52,12 +52,26 @@
       </el-tab-pane>
 
       <el-tab-pane :label="t('userSettings.changeEmail')" name="email">
+        <div v-if="profile.pending_email" style="margin-bottom: 16px">
+          <el-alert
+            type="warning"
+            :title="t('userSettings.emailVerificationHint', { email: profile.pending_email })"
+            show-icon
+            :closable="false"
+          >
+            <template #extra>
+              <el-button type="warning" size="small" :loading="emailResendLoading" @click="onResendVerification" style="margin-left: 12px">
+                {{ t('userSettings.emailResend') }}
+              </el-button>
+            </template>
+          </el-alert>
+        </div>
         <el-form ref="emailFormRef" :model="emailForm" :rules="emailRules" label-width="140px" style="max-width: 500px">
           <el-form-item :label="t('userSettings.currentEmail')">
             <span>{{ profile.email || '—' }}</span>
           </el-form-item>
           <el-form-item :label="t('userSettings.newEmail')" prop="email">
-            <el-input v-model="emailForm.email" type="email" />
+            <el-input v-model="emailForm.email" type="email" :placeholder="profile.pending_email ? profile.pending_email : ''" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" :loading="emailLoading" @click="onChangeEmail">
@@ -197,6 +211,17 @@
             <el-button type="primary" @click="onCopyKey">{{ t('common.copy') || 'Copy' }}</el-button>
           </template>
         </el-dialog>
+
+        <el-dialog v-model="showRecoveryCodesDialog" :title="t('userSettings.recoveryCodesTitle')" width="480px" :close-on-click-modal="false" :show-close="true">
+          <el-alert type="warning" :title="t('userSettings.recoveryCodesHint')" show-icon :closable="false" style="margin-bottom: 16px" />
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center">
+            <code v-for="code in recoveryCodes" :key="code" style="background: #f0f0f0; padding: 8px 16px; border-radius: 6px; font-size: 18px; letter-spacing: 2px; font-weight: 600; color: #409eff">{{ code }}</code>
+          </div>
+          <template #footer>
+            <el-button type="primary" @click="onCopyRecoveryCodes">{{ t('common.copy') }}</el-button>
+            <el-button type="success" @click="showRecoveryCodesDialog = false">{{ t('common.confirm') || 'OK' }}</el-button>
+          </template>
+        </el-dialog>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -240,6 +265,7 @@ const passwordFormRef = ref(null);
 const emailFormRef = ref(null);
 const passwordLoading = ref(false);
 const emailLoading = ref(false);
+const emailResendLoading = ref(false);
 const setupLoading = ref(false);
 const verifyLoading = ref(false);
 const disableLoading = ref(false);
@@ -352,14 +378,27 @@ async function onChangeEmail() {
   }
   emailLoading.value = true;
   try {
-    const data = await changeEmailApi({ email: emailForm.email });
-    profile.value.email = data.email;
-    ElMessage.success(t("userSettings.emailChanged"));
+    await changeEmailApi({ email: emailForm.email });
+    profile.value.pending_email = emailForm.email;
+    ElMessage.success(t("userSettings.emailChangeSuccess"));
     emailForm.email = "";
   } catch (e) {
     ElMessage.error(e?.response?.data?.message || t("common.failed"));
   } finally {
     emailLoading.value = false;
+  }
+}
+
+async function onResendVerification() {
+  if (!profile.value.pending_email) return;
+  emailResendLoading.value = true;
+  try {
+    await changeEmailApi({ email: profile.value.pending_email });
+    ElMessage.success(t("userSettings.emailChangeSuccess"));
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || t("common.failed"));
+  } finally {
+    emailResendLoading.value = false;
   }
 }
 
@@ -384,13 +423,18 @@ async function onVerify2FA() {
   }
   verifyLoading.value = true;
   try {
-    await twoFactorVerifyApi({ code: verifyForm.code });
+    const data = await twoFactorVerifyApi({ code: verifyForm.code });
     twoFactorEnabled.value = true;
     profile.value.two_factor_enabled = true;
     setupData.value = null;
     qrCodeUrl.value = "";
     verifyForm.code = "";
-    ElMessage.success(t("userSettings.twoFactorEnabled"));
+    if (data.recovery_codes && data.recovery_codes.length > 0) {
+      recoveryCodes.value = data.recovery_codes;
+      showRecoveryCodesDialog.value = true;
+    } else {
+      ElMessage.success(t("userSettings.twoFactorEnabled"));
+    }
   } catch (e) {
     ElMessage.error(e?.response?.data?.message || t("common.failed"));
   } finally {
@@ -416,6 +460,9 @@ async function onDisable2FA() {
     disableLoading.value = false;
   }
 }
+
+const recoveryCodes = ref([]);
+const showRecoveryCodesDialog = ref(false);
 
 const apiKeyList = ref([]);
 const showCreateDialog = ref(false);
@@ -486,6 +533,15 @@ async function onCopyKey() {
 
 function onKeyDialogClose() {
   newKeyValue.value = "";
+}
+
+async function onCopyRecoveryCodes() {
+  try {
+    await navigator.clipboard.writeText(recoveryCodes.value.join("\n"));
+    ElMessage.success(t("userSettings.recoveryCodeCopied"));
+  } catch {
+    ElMessage.error(t("userSettings.apiKeyCopyFailed"));
+  }
 }
 
 onMounted(() => {

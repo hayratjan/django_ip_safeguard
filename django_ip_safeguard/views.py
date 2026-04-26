@@ -930,6 +930,13 @@ def two_factor_login_verify_view(request: HttpRequest) -> JsonResponse:
     profile = _get_user_profile(user)
     if not profile.two_factor_enabled:
         return api_error(_("该用户未启用 2FA"), code=4008, status=400)
+    if profile.is_2fa_locked():
+        remaining = profile.get_2fa_lock_remaining_seconds()
+        return api_error(
+            _("2FA 验证失败次数过多，账户已锁定，请 %(ttl)s 秒后重试") % {"ttl": remaining},
+            code=4291,
+            status=429,
+        )
     try:
         import pyotp
     except ImportError:
@@ -938,13 +945,17 @@ def two_factor_login_verify_view(request: HttpRequest) -> JsonResponse:
     if not secret:
         return api_error(_("2FA 密钥未设置"), code=4008, status=400)
     totp = pyotp.totp.TOTP(secret)
-    if not totp.verify(code, valid_window=1):
+    verified = totp.verify(code, valid_window=1)
+    if not verified:
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         if code_hash in (profile.recovery_codes or []):
+            verified = True
             profile.recovery_codes = [h for h in profile.recovery_codes if h != code_hash]
             profile.save(update_fields=["recovery_codes"])
-        else:
-            return api_error(_("验证码不正确"), code=4004, status=400)
+    if not verified:
+        profile.record_2fa_failure()
+        return api_error(_("验证码不正确"), code=4004, status=400)
+    profile.clear_2fa_failure()
     request.session.pop("2fa_pending_user_id", None)
     request.session.pop("2fa_pending_ts", None)
     login_mode = str(payload.get("login_mode", "session")).strip().lower()
@@ -1182,7 +1193,8 @@ def two_factor_verify_view(request: HttpRequest) -> JsonResponse:
     hashed_codes = [hashlib.sha256(rc.encode()).hexdigest() for rc in recovery_codes]
     profile.recovery_codes = hashed_codes
     profile.two_factor_enabled = True
-    profile.save(update_fields=["two_factor_enabled", "recovery_codes"])
+    profile.clear_2fa_failure()
+    profile.save(update_fields=["two_factor_enabled", "recovery_codes", "two_factor_fail_count", "two_factor_locked_until"])
     _log_security_audit(request, "2fa_enable", f"user={user.username}", user)
     return api_success({"recovery_codes": recovery_codes}, message=_("2FA 已启用，请妥善保存恢复码"))
 
@@ -1229,20 +1241,62 @@ def api_key_login_view(request: HttpRequest) -> JsonResponse:
     api_key = str(payload.get("api_key", "")).strip()
     if not api_key:
         return api_error(_("API 密钥不能为空"), code=4002, status=400)
-    from django_ip_safeguard.models import ApiKey
+    from django_ip_safeguard.models import ApiKey, ApiKeyUsageLog
     key_hash = ApiKey.hash_key(api_key)
+    client_ip = _get_client_ip(request)
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:512]
+    login_mode = str(payload.get("login_mode", "jwt")).strip().lower()
     try:
         obj = ApiKey.objects.select_related("user").get(key_hash=key_hash)
     except ApiKey.DoesNotExist:
+        ApiKeyUsageLog.objects.create(
+            ip=client_ip,
+            user_agent=user_agent,
+            action="login",
+            success=False,
+            failure_reason="invalid_key",
+        )
         return api_error(_("API 密钥无效"), code=4004, status=401)
-    if not obj.is_valid():
-        return api_error(_("API 密钥已失效或过期"), code=4004, status=401)
+    is_valid, reason = obj.is_valid(client_ip)
+    if not is_valid:
+        obj.login_failures = min(obj.login_failures + 1, 10)
+        obj.save(update_fields=["login_failures"])
+        ApiKeyUsageLog.objects.create(
+            api_key=obj,
+            ip=client_ip,
+            user_agent=user_agent,
+            action="login",
+            success=False,
+            failure_reason=reason,
+        )
+        return api_error(reason, code=4004, status=401)
     user = obj.user
     if not user.is_active or not user.is_staff:
+        obj.login_failures = min(obj.login_failures + 1, 10)
+        obj.save(update_fields=["login_failures"])
+        ApiKeyUsageLog.objects.create(
+            api_key=obj,
+            ip=client_ip,
+            user_agent=user_agent,
+            action="login",
+            success=False,
+            failure_reason="no_permission",
+        )
         return api_error(_("该账号无后台权限"), code=4030, status=403)
     obj.last_used_at = timezone.now()
-    obj.save(update_fields=["last_used_at"])
-    login_mode = str(payload.get("login_mode", "jwt")).strip().lower()
+    obj.last_used_ip = client_ip
+    obj.usage_count = obj.usage_count + 1
+    obj.login_failures = 0
+    obj.save(update_fields=["last_used_at", "last_used_ip", "usage_count", "login_failures"])
+    ApiKeyUsageLog.objects.create(
+        api_key=obj,
+        user=user,
+        ip=client_ip,
+        user_agent=user_agent,
+        action="login",
+        success=True,
+    )
+    _log_security_audit(request, "api_key_login", f"user={user.username} key={obj.name} ip={client_ip}", user)
     if login_mode == "session":
         login(request, user)
         return api_success({"username": user.username}, message=_("API 密钥登录成功"))
@@ -1267,7 +1321,12 @@ def api_key_list_view(request: HttpRequest) -> JsonResponse:
             "is_active": k.is_active,
             "expires_at": k.expires_at.isoformat() if k.expires_at else None,
             "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+            "last_used_ip": k.last_used_ip or None,
             "created_at": k.created_at.isoformat() if k.created_at else None,
+            "allowed_ips": k.allowed_ips or [],
+            "max_usage": k.max_usage,
+            "usage_count": k.usage_count,
+            "login_failures": k.login_failures,
         })
     return api_success(data)
 
@@ -1290,14 +1349,26 @@ def api_key_create_view(request: HttpRequest) -> JsonResponse:
     expires_at = None
     if expires_days > 0:
         expires_at = timezone.now() + timedelta(days=expires_days)
+    allowed_ips_raw = payload.get("allowed_ips", [])
+    allowed_ips = []
+    if isinstance(allowed_ips_raw, list):
+        for ip in allowed_ips_raw:
+            ip = str(ip).strip()
+            if ip:
+                allowed_ips.append(ip)
+    max_usage = int(payload.get("max_usage", 0) or 0)
+    client_ip = _get_client_ip(request)
     obj = ApiKey.objects.create(
         user=user,
         name=name,
         prefix=prefix,
         key_hash=key_hash,
         expires_at=expires_at,
+        allowed_ips=allowed_ips,
+        max_usage=max_usage,
+        created_by_ip=client_ip,
     )
-    _log_security_audit(request, "api_key_create", f"user={user.username} name={name}", user)
+    _log_security_audit(request, "api_key_create", f"user={user.username} name={name} ip={client_ip}", user)
     return api_success({
         "id": obj.id,
         "name": obj.name,
@@ -1335,11 +1406,51 @@ def api_key_revoke_view(request: HttpRequest) -> JsonResponse:
 
 @csrf_protect
 @api_permission_required()
+@require_http_methods(["POST"])
+def api_key_logs_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    key_id = payload.get("key_id")
+    if not key_id:
+        return api_error(_("密钥 ID 不能为空"), code=4002, status=400)
+    from django_ip_safeguard.models import ApiKey, ApiKeyUsageLog
+    try:
+        obj = ApiKey.objects.get(pk=key_id, user=user)
+    except ApiKey.DoesNotExist:
+        return api_error(_("密钥不存在"), code=4004, status=404)
+    page = max(1, int(payload.get("page", 1) or 1))
+    page_size = min(100, max(10, int(payload.get("page_size", 20) or 20)))
+    logs = ApiKeyUsageLog.objects.filter(api_key=obj).order_by("-created_at")
+    total = logs.count()
+    offset = (page - 1) * page_size
+    logs = logs[offset:offset + page_size]
+    data = []
+    for log in logs:
+        data.append({
+            "id": log.id,
+            "ip": log.ip or None,
+            "user_agent": log.user_agent,
+            "action": log.action,
+            "success": log.success,
+            "failure_reason": log.failure_reason,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        })
+    return api_success({"total": total, "page": page, "page_size": page_size, "logs": data})
+
+
+@csrf_protect
+@api_permission_required()
 @require_GET
 def user_profile_view(request: HttpRequest) -> JsonResponse:
     user = _resolve_request_user(request)
     if not user.is_authenticated:
         return api_error(_("未登录"), code=4010, status=401)
+    profile = _get_user_profile(user)
     return api_success({
         "username": user.username,
         "email": user.email or "",
@@ -1347,7 +1458,8 @@ def user_profile_view(request: HttpRequest) -> JsonResponse:
         "last_name": getattr(user, "last_name", ""),
         "is_staff": user.is_staff,
         "is_superuser": user.is_superuser,
-        "two_factor_enabled": _get_user_profile(user).two_factor_enabled,
+        "two_factor_enabled": profile.two_factor_enabled,
+        "pending_email": profile.pending_email or "",
         "date_joined": user.date_joined.isoformat() if hasattr(user, "date_joined") and user.date_joined else None,
         "last_login": user.last_login.isoformat() if hasattr(user, "last_login") and user.last_login else None,
     })
@@ -1431,6 +1543,7 @@ def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
 @api_permission_required("django_ip_safeguard.view_ipguardpolicy")
 @require_http_methods(["GET", "POST"])
 def system_settings_view(request: HttpRequest) -> JsonResponse:
+    from django.conf import settings
     if request.method == "GET":
         cfg = get_settings()
         return api_success({
@@ -1446,6 +1559,9 @@ def system_settings_view(request: HttpRequest) -> JsonResponse:
             "provider": cfg.provider,
             "china_pool_rule": cfg.china_pool_rule,
             "international_pool_rule": cfg.international_pool_rule,
+            "login_fail_limit": getattr(settings, "IP_GUARD_LOGIN_FAIL_LIMIT", 5),
+            "login_fail_lock_seconds": getattr(settings, "IP_GUARD_LOGIN_FAIL_LOCK_SECONDS", 300),
+            "password_max_age_days": getattr(settings, "IP_GUARD_PASSWORD_MAX_AGE_DAYS", 0),
         })
 
     try:

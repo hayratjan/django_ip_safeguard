@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
@@ -22,6 +23,8 @@ class UserProfile(models.Model):
     email_verification_token = models.CharField(_("邮箱验证令牌"), max_length=64, blank=True, default="")
     email_token_expires = models.DateTimeField(_("验证令牌过期时间"), null=True, blank=True)
     recovery_codes = models.JSONField(_("2FA恢复码"), default=list, blank=True)
+    two_factor_fail_count = models.PositiveIntegerField(_("2FA验证失败次数"), default=0)
+    two_factor_locked_until = models.DateTimeField(_("2FA锁定截止时间"), null=True, blank=True)
     password_changed_at = models.DateTimeField(_("密码修改时间"), null=True, blank=True)
 
     class Meta:
@@ -47,6 +50,33 @@ class UserProfile(models.Model):
             return True
         return (timezone.now() - self.password_changed_at).days > max_age_days
 
+    def is_2fa_locked(self) -> bool:
+        if self.two_factor_locked_until and timezone.now() < self.two_factor_locked_until:
+            return True
+        if self.two_factor_locked_until:
+            self.two_factor_locked_until = None
+            self.two_factor_fail_count = 0
+            self.save(update_fields=["two_factor_locked_until", "two_factor_fail_count"])
+        return False
+
+    def get_2fa_lock_remaining_seconds(self) -> int:
+        if not self.two_factor_locked_until:
+            return 0
+        remaining = (self.two_factor_locked_until - timezone.now()).total_seconds()
+        return max(0, int(remaining))
+
+    def record_2fa_failure(self, lockout_minutes: int = 15, max_failures: int = 5) -> None:
+        self.two_factor_fail_count += 1
+        if self.two_factor_fail_count >= max_failures:
+            self.two_factor_locked_until = timezone.now() + timedelta(minutes=lockout_minutes)
+        self.save(update_fields=["two_factor_fail_count", "two_factor_locked_until"])
+
+    def clear_2fa_failure(self) -> None:
+        if self.two_factor_fail_count > 0 or self.two_factor_locked_until:
+            self.two_factor_fail_count = 0
+            self.two_factor_locked_until = None
+            self.save(update_fields=["two_factor_fail_count", "two_factor_locked_until"])
+
 
 class ApiKey(models.Model):
 
@@ -63,6 +93,12 @@ class ApiKey(models.Model):
     expires_at = models.DateTimeField(_("过期时间"), null=True, blank=True)
     last_used_at = models.DateTimeField(_("最后使用时间"), null=True, blank=True)
     created_at = models.DateTimeField(_("创建时间"), auto_now_add=True)
+    allowed_ips = models.JSONField(_("允许的IP列表"), default=list, blank=True)
+    max_usage = models.IntegerField(_("最大使用次数"), default=0)
+    usage_count = models.IntegerField(_("已使用次数"), default=0)
+    login_failures = models.IntegerField(_("连续登录失败次数"), default=0)
+    last_used_ip = models.GenericIPAddressField(_("最后使用IP"), null=True, blank=True)
+    created_by_ip = models.GenericIPAddressField(_("创建时IP"), null=True, blank=True)
 
     class Meta:
         verbose_name = _("API密钥")
@@ -83,12 +119,52 @@ class ApiKey(models.Model):
     def hash_key(raw_key: str) -> str:
         return hashlib.sha256(raw_key.encode()).hexdigest()
 
-    def is_valid(self) -> bool:
+    def is_valid(self, client_ip: str = None) -> tuple:
         if not self.is_active:
-            return False
+            return False, _("API 密钥已被禁用")
         if self.expires_at and timezone.now() > self.expires_at:
-            return False
-        return True
+            return False, _("API 密钥已过期")
+        if self.max_usage > 0 and self.usage_count >= self.max_usage:
+            return False, _("API 密钥已超过最大使用次数")
+        if self.allowed_ips and client_ip and client_ip not in self.allowed_ips:
+            return False, _("IP 地址不在允许列表中")
+        if self.login_failures >= 5:
+            return False, _("API 密钥因连续登录失败已被锁定")
+        return True, ""
+
+
+class ApiKeyUsageLog(models.Model):
+    api_key = models.ForeignKey(
+        ApiKey,
+        on_delete=models.CASCADE,
+        related_name="usage_logs",
+        verbose_name=_("API密钥"),
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="api_key_usage_logs",
+        verbose_name=_("用户"),
+    )
+    ip = models.GenericIPAddressField(_("IP地址"), null=True, blank=True)
+    user_agent = models.TextField(_("User Agent"), blank=True, default="")
+    action = models.CharField(_("操作"), max_length=32, default="login")
+    success = models.BooleanField(_("是否成功"), default=True)
+    failure_reason = models.CharField(_("失败原因"), max_length=128, blank=True, default="")
+    created_at = models.DateTimeField(_("创建时间"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("API密钥使用日志")
+        verbose_name_plural = _("API密钥使用日志")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at"]),
+            models.Index(fields=["api_key", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"ApiKeyUsageLog({self.api_key.name}/{self.action}/{self.ip})"
 
 
 class IpGuardPolicy(models.Model):

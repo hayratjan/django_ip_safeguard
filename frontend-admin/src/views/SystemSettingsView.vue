@@ -68,6 +68,15 @@
           <el-form-item :label="t('systemSettings.banTtl')">
             <el-input-number v-model="settingsForm.ban_ttl" :min="60" :max=2592000 />
           </el-form-item>
+          <el-form-item :label="t('systemSettings.loginFailLimit')">
+            <el-input-number v-model="settingsForm.login_fail_limit" :min="0" :max="100" />
+          </el-form-item>
+          <el-form-item :label="t('systemSettings.loginFailLockSeconds')">
+            <el-input-number v-model="settingsForm.login_fail_lock_seconds" :min="60" :max="86400" />
+          </el-form-item>
+          <el-form-item :label="t('systemSettings.passwordMaxAge')">
+            <el-input-number v-model="settingsForm.password_max_age_days" :min="0" :max="3650" />
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" :loading="saveLoading" @click="onSaveSettings">
               {{ t('common.save') }}
@@ -141,6 +150,9 @@ const settingsForm = reactive({
   use_db_log: false,
   cache_ttl: 3600,
   ban_ttl: 86400,
+  login_fail_limit: 5,
+  login_fail_lock_seconds: 300,
+  password_max_age_days: 0,
   china_pool_rule: "off",
   international_pool_rule: "off",
   ip_mask_enabled: false,

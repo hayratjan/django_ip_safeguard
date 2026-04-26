@@ -24,6 +24,7 @@ export const apiKeyLoginApi = (payload) => http.post("/auth/api-key/login/", pay
 export const apiKeyListApi = () => http.get("/auth/api-key/list/");
 export const apiKeyCreateApi = (payload) => http.post("/auth/api-key/create/", payload);
 export const apiKeyRevokeApi = (payload) => http.post("/auth/api-key/revoke/", payload);
+export const apiKeyLogsApi = (payload) => http.post("/auth/api-key/logs/", payload);
 
 export const dashboardApi = () => http.get("/dashboard/");
 export const recentRecordsApi = (params) => http.get("/recent-records/", { params });
