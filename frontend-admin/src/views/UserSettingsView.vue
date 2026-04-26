@@ -528,10 +528,13 @@ async function fetchApiKeys() {
 async function onCreateApiKey() {
   apiKeyCreating.value = true;
   try {
+    const allowedIpsList = apiKeyCreateForm.allowed_ips
+      ? apiKeyCreateForm.allowed_ips.split(",").map(ip => ip.trim()).filter(ip => ip)
+      : [];
     const data = await apiKeyCreateApi({
       name: apiKeyCreateForm.name || "default",
       expires_days: apiKeyCreateForm.expires_days,
-      allowed_ips: apiKeyCreateForm.allowed_ips || "",
+      allowed_ips: allowedIpsList,
       max_usage: apiKeyCreateForm.max_usage || 0,
     });
     newKeyValue.value = data.key;

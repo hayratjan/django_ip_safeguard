@@ -3,6 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 
 from django_ip_safeguard.models import (
+    ApiKeyUsageLog,
     IpAccessLog,
     IpBanRecord,
     IpGeoPoolStatus,
@@ -128,3 +129,15 @@ class UserProfileAdmin(ModelAdmin):
     list_filter = ("two_factor_enabled", "two_factor_locked_until")
     list_filter_submit = True
     readonly_fields = ("two_factor_secret", "recovery_codes")
+
+
+@admin.register(ApiKeyUsageLog)
+class ApiKeyUsageLogAdmin(ModelAdmin):
+    list_display = ("api_key", "user", "ip", "action", "success", "failure_reason", "created_at")
+    search_fields = ("api_key__name", "user__username", "ip", "failure_reason")
+    list_filter = ("success", "action", "created_at")
+    list_filter_submit = True
+    readonly_fields = ("api_key", "user", "ip", "user_agent", "action", "success", "failure_reason", "created_at")
+
+    def has_add_permission(self, request):
+        return False
