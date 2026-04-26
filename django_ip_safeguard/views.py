@@ -1020,7 +1020,7 @@ def i18n_lang_switch_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("不支持的语言代码"), code=4007, status=400)
     activate(lang_code)
     if hasattr(request, "session") and request.session.session_key:
-        request.session[settings.LANGUAGE_SESSION_KEY] = lang_code
+        request.session["django_language"] = lang_code
     user = _resolve_request_user(request)
     if user.is_authenticated:
         profile = _get_user_profile(user)
