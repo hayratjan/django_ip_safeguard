@@ -1,6 +1,10 @@
 import ipaddress
 import json
 import logging
+import os
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -45,15 +49,82 @@ DEFAULT_THREAT_FEEDS = {
         "ttl": 86400,
         "description": "Emerging Threats 已知恶意IP",
     },
+    "ci Army": {
+        "url": "https://cinsarmy.com/my-lists/optimized/ci-badguys.txt",
+        "format": "ip_list",
+        "threat_type": "scanner",
+        "auto_ban": True,
+        "ttl": 86400,
+        "description": "CINS Army - 恶意扫描源",
+    },
+    "dshield_top": {
+        "url": "https://www.dshield.org/feeds/suspiciousdomains.txt",
+        "format": "ip_list",
+        "threat_type": "scanner",
+        "auto_ban": True,
+        "ttl": 86400,
+        "description": "DShield 可疑IP列表",
+    },
+}
+
+ABUSEIPDB_CATEGORIES = {
+    "dns_compromise": 1,
+    "dns_poisoning": 2,
+    "fraud_orders": 3,
+    "ddos_attack": 4,
+    "ftp_brute": 5,
+    "ping_of_death": 6,
+    "phishing": 7,
+    "fraud_cc": 8,
+    "open_proxy": 9,
+    "web_spam": 10,
+    "email_spam": 11,
+    "blog_spam": 12,
+    "port_scan": 14,
+    "hacking": 15,
+    "sql_injection": 16,
+    "backdoor": 17,
+    "transgression": 18,
+    "bot": 19,
+    "web_attack": 20,
+    "ssh_brute": 21,
 }
 
 
-class ThreatIntelSubscriber:
-    """威胁情报订阅服务：从多个 Feed 拉取数据并写入 Redis。"""
+@dataclass
+class AbuseIPDBReport:
+    ip_address: str
+    categories: List[int]
+    timestamp: str = ""
+    reporter_count: int = 0
+
+
+@dataclass
+class ThreatFeedStats:
+    feed_name: str
+    entry_count: int
+    last_updated: str
+    auto_ban_count: int
+    source: str
+    threat_type: str
+
+
+@dataclass
+class ThreatIntelStats:
+    total_feeds: int = 0
+    total_entries: int = 0
+    total_auto_bans: int = 0
+    feeds: List[ThreatFeedStats] = field(default_factory=list)
+    last_full_sync: str = ""
+
+
+class EnhancedThreatIntelSubscriber:
+    """增强版威胁情报订阅服务：支持更多数据源和统计分析"""
 
     def __init__(self, cache_service: RedisCacheService, config: IpGuardSettings):
         self.cache = cache_service
         self.config = config
+        self._stats_key = "ip_guard:threat_intel:stats"
 
     def sync_feed(self, feed_name: str, feed_config: Dict[str, Any]) -> Dict[str, Any]:
         url = feed_config.get("url", "")
@@ -82,6 +153,8 @@ class ThreatIntelSubscriber:
         if auto_ban:
             auto_ban_count = self._apply_auto_ban(entries, ttl)
 
+        self._update_feed_stats(feed_name, len(entries), auto_ban_count, threat_type, feed_config.get("description", ""))
+
         logger.info(
             "威胁情报同步完成: %s, 条目=%s, 自动封禁=%s",
             feed_name, len(entries), auto_ban_count,
@@ -96,10 +169,144 @@ class ThreatIntelSubscriber:
     def sync_all_feeds(self) -> Dict[str, Any]:
         feeds = self._get_active_feeds()
         results = []
+        total_entries = 0
+        total_auto_bans = 0
         for name, feed_config in feeds.items():
             result = self.sync_feed(name, feed_config)
             results.append(result)
-        return {"results": results}
+            if result.get("ok"):
+                total_entries += result.get("count", 0)
+                total_auto_bans += result.get("auto_ban_count", 0)
+
+        self._update_overall_stats(len(feeds), total_entries, total_auto_bans)
+
+        return {"results": results, "total_entries": total_entries, "total_auto_bans": total_auto_bans}
+
+    def get_stats(self) -> ThreatIntelStats:
+        stats = ThreatIntelStats()
+        try:
+            stats_data = self.cache.client.get(self._stats_key)
+            if stats_data:
+                data = json.loads(stats_data)
+                stats.total_feeds = data.get("total_feeds", 0)
+                stats.total_entries = data.get("total_entries", 0)
+                stats.total_auto_bans = data.get("total_auto_bans", 0)
+                stats.last_full_sync = data.get("last_full_sync", "")
+        except Exception:
+            pass
+
+        try:
+            feeds_data = self.cache.client.get(f"{self._stats_key}:feeds")
+            if feeds_data:
+                feeds_list = json.loads(feeds_data)
+                for f in feeds_list:
+                    stats.feeds.append(ThreatFeedStats(
+                        feed_name=f.get("feed_name", ""),
+                        entry_count=f.get("entry_count", 0),
+                        last_updated=f.get("last_updated", ""),
+                        auto_ban_count=f.get("auto_ban_count", 0),
+                        source=f.get("source", ""),
+                        threat_type=f.get("threat_type", ""),
+                    ))
+        except Exception:
+            pass
+
+        return stats
+
+    def query_ip_reputation(self, ip: str) -> Dict[str, Any]:
+        result = {
+            "ip": ip,
+            "threat_types": [],
+            "sources": [],
+            "confidence": 0,
+            "last_reported": None,
+            "report_count": 0,
+        }
+
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return result
+
+        feeds = self._get_active_feeds()
+        for feed_name, feed_config in feeds.items():
+            threat_type = feed_config.get("threat_type", "unknown")
+
+            try:
+                ip_key = f"ip_guard:threat_intel:{feed_name}:ips"
+                if self.cache.client.sismember(ip_key, ip):
+                    result["threat_types"].append(threat_type)
+                    result["sources"].append(feed_name)
+                    result["confidence"] = min(100, result["confidence"] + 30)
+                    continue
+            except Exception:
+                pass
+
+            try:
+                cidr_key = f"ip_guard:threat_intel:{feed_name}:cidrs"
+                cidrs = self.cache.client.smembers(cidr_key)
+                for cidr_str in cidrs:
+                    try:
+                        if addr in ipaddress.ip_network(cidr_str, strict=False):
+                            result["threat_types"].append(threat_type)
+                            result["sources"].append(feed_name)
+                            result["confidence"] = min(100, result["confidence"] + 20)
+                            break
+                    except ValueError:
+                        continue
+            except Exception:
+                pass
+
+        return result
+
+    def check_abuseipdb(self, ip: str, api_key: str = "") -> Optional[Dict[str, Any]]:
+        if not api_key:
+            api_key = getattr(self.config, 'abuseipdb_api_key', "") or os.getenv("ABUSEIPDB_API_KEY", "")
+        if not api_key:
+            return None
+
+        cache_key = f"ip_guard:abuseipdb:{ip}"
+        try:
+            cached = self.cache.client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+
+        url = "https://api.abuseipdb.com/api/v2/check"
+        headers = {"Key": api_key, "Accept": "application/json"}
+        params = {"ipAddress": ip, "maxAgeInDays": 90}
+
+        try:
+            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                resp = client.get(url, headers=headers, params=params)
+                if resp.status_code == 429:
+                    logger.warning("AbuseIPDB API 速率限制")
+                    return None
+                if resp.status_code != 200:
+                    return None
+
+                data = resp.json().get("data", {})
+                result = {
+                    "ip": ip,
+                    "is_public": data.get("isPublic", False),
+                    "ip_version": data.get("ipVersion", 0),
+                    "is_whitelisted": data.get("isWhitelisted", False),
+                    "abuse_confidence_score": data.get("abuseConfidenceScore", 0),
+                    "country_code": data.get("countryCode", ""),
+                    "usage_type": data.get("usageType", ""),
+                    "isp": data.get("isp", ""),
+                    "domain": data.get("domain", ""),
+                    "total_reports": data.get("totalReports", 0),
+                    "numDistinctUsers": data.get("numDistinctUsers", 0),
+                    "last_reported_at": data.get("lastReportedAt", ""),
+                }
+
+                self.cache.client.setex(cache_key, 86400, json.dumps(result))
+                return result
+        except Exception as exc:
+            logger.warning("AbuseIPDB 查询失败: %s", exc)
+            return None
 
     def _get_active_feeds(self) -> Dict[str, Dict[str, Any]]:
         custom_feeds = {}
@@ -158,9 +365,7 @@ class ThreatIntelSubscriber:
                     entries.append(entry)
         return entries
 
-    def _parse_cidr_line(
-        self, line: str, threat_type: str, source: str, auto_ban: bool, ttl: int
-    ) -> Optional[ThreatIntelEntry]:
+    def _parse_cidr_line(self, line: str, threat_type: str, source: str, auto_ban: bool, ttl: int) -> Optional[ThreatIntelEntry]:
         parts = line.split(";")
         cidr = parts[0].strip()
         try:
@@ -177,9 +382,7 @@ class ThreatIntelSubscriber:
             ttl=ttl,
         )
 
-    def _parse_ip_line(
-        self, line: str, threat_type: str, source: str, auto_ban: bool, ttl: int
-    ) -> Optional[ThreatIntelEntry]:
+    def _parse_ip_line(self, line: str, threat_type: str, source: str, auto_ban: bool, ttl: int) -> Optional[ThreatIntelEntry]:
         ip = line.strip()
         try:
             ipaddress.ip_address(ip)
@@ -193,9 +396,7 @@ class ThreatIntelSubscriber:
             ttl=ttl,
         )
 
-    def _parse_json_line(
-        self, line: str, threat_type: str, source: str, auto_ban: bool, ttl: int
-    ) -> Optional[ThreatIntelEntry]:
+    def _parse_json_line(self, line: str, threat_type: str, source: str, auto_ban: bool, ttl: int) -> Optional[ThreatIntelEntry]:
         try:
             data = json.loads(line)
         except json.JSONDecodeError:
@@ -213,9 +414,7 @@ class ThreatIntelSubscriber:
             ttl=int(data.get("ttl", ttl)),
         )
 
-    def _store_entries(
-        self, entries: List[ThreatIntelEntry], feed_name: str, threat_type: str, ttl: int
-    ) -> None:
+    def _store_entries(self, entries: List[ThreatIntelEntry], feed_name: str, threat_type: str, ttl: int) -> None:
         ip_list = []
         cidr_list = []
         for e in entries:
@@ -246,10 +445,7 @@ class ThreatIntelSubscriber:
             ips = [e.ip_or_cidr for e in entries if "/" not in e.ip_or_cidr]
             if ips:
                 try:
-                    self.cache.client.set(
-                        "ip_guard:threat_intel:tor_exit_nodes",
-                        json.dumps(ips),
-                    )
+                    self.cache.client.set("ip_guard:threat_intel:tor_exit_nodes", json.dumps(ips))
                 except Exception:
                     pass
         elif threat_type in ("botnet", "malware"):
@@ -259,10 +455,7 @@ class ThreatIntelSubscriber:
                     existing = self.cache.client.get("ip_guard:threat_intel:botnet_cidrs")
                     existing_list = json.loads(existing) if existing else []
                     merged = list(set(existing_list + cidrs))
-                    self.cache.client.set(
-                        "ip_guard:threat_intel:botnet_cidrs",
-                        json.dumps(merged),
-                    )
+                    self.cache.client.set("ip_guard:threat_intel:botnet_cidrs", json.dumps(merged))
                 except Exception:
                     pass
 
@@ -281,46 +474,42 @@ class ThreatIntelSubscriber:
                 continue
         return count
 
-    def check_ip_in_feeds(self, ip: str) -> List[ThreatIntelEntry]:
-        matches = []
+    def _update_feed_stats(self, feed_name: str, entry_count: int, auto_ban_count: int, threat_type: str, description: str) -> None:
         try:
-            addr = ipaddress.ip_address(ip)
-        except ValueError:
-            return matches
+            feeds_data = self.cache.client.get(f"{self._stats_key}:feeds")
+            feeds_list = json.loads(feeds_data) if feeds_data else []
 
-        feeds = self._get_active_feeds()
-        for feed_name, feed_config in feeds.items():
-            threat_type = feed_config.get("threat_type", "unknown")
+            for f in feeds_list:
+                if f.get("feed_name") == feed_name:
+                    f["entry_count"] = entry_count
+                    f["auto_ban_count"] = auto_ban_count
+                    f["last_updated"] = datetime.now().isoformat()
+                    break
+            else:
+                feeds_list.append({
+                    "feed_name": feed_name,
+                    "entry_count": entry_count,
+                    "auto_ban_count": auto_ban_count,
+                    "last_updated": datetime.now().isoformat(),
+                    "source": description,
+                    "threat_type": threat_type,
+                })
 
-            try:
-                ip_key = f"ip_guard:threat_intel:{feed_name}:ips"
-                if self.cache.client.sismember(ip_key, ip):
-                    matches.append(ThreatIntelEntry(
-                        ip_or_cidr=ip,
-                        threat_type=threat_type,
-                        source=feed_name,
-                        auto_ban=feed_config.get("auto_ban", False),
-                    ))
-                    continue
-            except Exception:
-                pass
+            self.cache.client.set(f"{self._stats_key}:feeds", json.dumps(feeds_list))
+        except Exception:
+            pass
 
-            try:
-                cidr_key = f"ip_guard:threat_intel:{feed_name}:cidrs"
-                cidrs = self.cache.client.smembers(cidr_key)
-                for cidr_str in cidrs:
-                    try:
-                        if addr in ipaddress.ip_network(cidr_str, strict=False):
-                            matches.append(ThreatIntelEntry(
-                                ip_or_cidr=cidr_str,
-                                threat_type=threat_type,
-                                source=feed_name,
-                                auto_ban=feed_config.get("auto_ban", False),
-                            ))
-                            break
-                    except ValueError:
-                        continue
-            except Exception:
-                pass
+    def _update_overall_stats(self, total_feeds: int, total_entries: int, total_auto_bans: int) -> None:
+        try:
+            stats = {
+                "total_feeds": total_feeds,
+                "total_entries": total_entries,
+                "total_auto_bans": total_auto_bans,
+                "last_full_sync": datetime.now().isoformat(),
+            }
+            self.cache.client.set(self._stats_key, json.dumps(stats))
+        except Exception:
+            pass
 
-        return matches
+
+ThreatIntelSubscriber = EnhancedThreatIntelSubscriber

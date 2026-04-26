@@ -136,39 +136,42 @@
 
       <el-tab-pane :label="t('userSettings.apiKeys')" name="apikey">
         <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center">
-          <span style="color: #606266; font-size: 14px">{{ t('userSettings.noApiKeys') }}</span>
+          <span style="color: #606266; font-size: 14px">{{ apiKeyList.length > 0 ? '' : t('userSettings.noApiKeys') }}</span>
           <el-button type="primary" @click="showCreateDialog = true">
             {{ t('userSettings.createApiKey') }}
           </el-button>
         </div>
 
         <el-table :data="apiKeyList" style="width: 100%" v-if="apiKeyList.length > 0" stripe>
-          <el-table-column prop="name" :label="t('userSettings.apiKeyName')" width="140" />
-          <el-table-column prop="prefix" :label="t('userSettings.apiKeyPrefix')" width="100" />
-          <el-table-column :label="t('userSettings.apiKeyStatus')" width="90">
+          <el-table-column prop="name" :label="t('userSettings.apiKeyName')" width="120" />
+          <el-table-column prop="prefix" :label="t('userSettings.apiKeyPrefix')" width="90" />
+          <el-table-column :label="t('userSettings.apiKeyStatus')" width="80">
             <template #default="{ row }">
               <el-tag v-if="!row.is_active" type="info" size="small">{{ t('userSettings.apiKeyRevoked') }}</el-tag>
               <el-tag v-else-if="row.expires_at && new Date(row.expires_at) < new Date()" type="warning" size="small">{{ t('userSettings.apiKeyExpired') }}</el-tag>
               <el-tag v-else type="success" size="small">{{ t('userSettings.apiKeyActive') }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column :label="t('userSettings.apiKeyExpires')" width="170">
+          <el-table-column :label="t('userSettings.apiKeyMaxUsage')" width="100">
+            <template #default="{ row }">
+              {{ row.max_usage > 0 ? row.usage_count + ' / ' + row.max_usage : '∞' }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('userSettings.apiKeyLastUsedIp')" width="130">
+            <template #default="{ row }">
+              {{ row.last_used_ip || '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('userSettings.apiKeyExpires')" width="150">
             <template #default="{ row }">
               {{ row.expires_at ? new Date(row.expires_at).toLocaleString() : t('userSettings.apiKeyNoExpiry') }}
             </template>
           </el-table-column>
-          <el-table-column :label="t('userSettings.apiKeyLastUsed')" width="170">
+          <el-table-column :label="t('common.action')" width="140" fixed="right">
             <template #default="{ row }">
-              {{ row.last_used_at ? new Date(row.last_used_at).toLocaleString() : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('userSettings.apiKeyCreatedAt')" width="170">
-            <template #default="{ row }">
-              {{ row.created_at ? new Date(row.created_at).toLocaleString() : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('common.action')" width="100" fixed="right">
-            <template #default="{ row }">
+              <el-button type="primary" size="small" link @click="onViewApiKeyLogs(row)">
+                {{ t('userSettings.apiKeyViewLogs') }}
+              </el-button>
               <el-button
                 v-if="row.is_active"
                 type="danger"
@@ -183,14 +186,26 @@
           </el-table-column>
         </el-table>
 
-        <el-dialog v-model="showCreateDialog" :title="t('userSettings.createApiKey')" width="460px" :close-on-click-modal="false">
-          <el-form :model="apiKeyCreateForm" label-width="120px">
+        <el-dialog v-model="showCreateDialog" :title="t('userSettings.createApiKey')" width="500px" :close-on-click-modal="false">
+          <el-form :model="apiKeyCreateForm" label-width="130px">
             <el-form-item :label="t('userSettings.apiKeyName')">
               <el-input v-model="apiKeyCreateForm.name" :placeholder="t('userSettings.apiKeyNamePlaceholder')" />
             </el-form-item>
             <el-form-item :label="t('userSettings.apiKeyExpiresDays')">
-              <el-input-number v-model="apiKeyCreateForm.expires_days" :min="0" :max="3650" />
+              <el-input-number v-model="apiKeyCreateForm.expires_days" :min="0" :max="3650" style="width: 200px" />
               <div style="margin-top: 4px; font-size: 12px; color: #909399">{{ t('userSettings.apiKeyExpiresDaysHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('userSettings.apiKeyAllowedIps')">
+              <el-input
+                v-model="apiKeyCreateForm.allowed_ips"
+                type="textarea"
+                :rows="2"
+                :placeholder="t('userSettings.apiKeyAllowedIpsPlaceholder')"
+              />
+            </el-form-item>
+            <el-form-item :label="t('userSettings.apiKeyMaxUsage')">
+              <el-input-number v-model="apiKeyCreateForm.max_usage" :min="0" :max="999999" style="width: 200px" />
+              <div style="margin-top: 4px; font-size: 12px; color: #909399">{{ t('userSettings.apiKeyMaxUsagePlaceholder') }}</div>
             </el-form-item>
           </el-form>
           <template #footer>
@@ -209,6 +224,29 @@
           />
           <template #footer>
             <el-button type="primary" @click="onCopyKey">{{ t('common.copy') || 'Copy' }}</el-button>
+          </template>
+        </el-dialog>
+
+        <el-dialog v-model="showApiKeyLogsDialog" :title="t('userSettings.apiKeyUsageLog')" width="700px" :close-on-click-modal="false">
+          <el-table :data="apiKeyLogs" style="width: 100%" v-if="apiKeyLogs.length > 0" stripe>
+            <el-table-column prop="ip" :label="'IP'" width="130" />
+            <el-table-column :label="t('userSettings.apiKeyStatus')" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+                  {{ row.success ? t('userSettings.apiKeyActive') : row.failure_reason }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="user_agent" :label="'User Agent'" min-width="200" show-overflow-tooltip />
+            <el-table-column :label="t('userSettings.apiKeyCreatedAt')" width="150">
+              <template #default="{ row }">
+                {{ row.created_at ? new Date(row.created_at).toLocaleString() : '—' }}
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else :description="t('userSettings.apiKeyNoLogs')" />
+          <template #footer>
+            <el-button @click="showApiKeyLogsDialog = false">{{ t('common.close') }}</el-button>
           </template>
         </el-dialog>
 
@@ -467,11 +505,15 @@ const showRecoveryCodesDialog = ref(false);
 const apiKeyList = ref([]);
 const showCreateDialog = ref(false);
 const showKeyDialog = ref(false);
+const showApiKeyLogsDialog = ref(false);
+const apiKeyLogs = ref([]);
 const apiKeyCreating = ref(false);
 const newKeyValue = ref("");
 const apiKeyCreateForm = reactive({
   name: "",
   expires_days: 0,
+  allowed_ips: "",
+  max_usage: 0,
 });
 
 async function fetchApiKeys() {
@@ -489,12 +531,16 @@ async function onCreateApiKey() {
     const data = await apiKeyCreateApi({
       name: apiKeyCreateForm.name || "default",
       expires_days: apiKeyCreateForm.expires_days,
+      allowed_ips: apiKeyCreateForm.allowed_ips || "",
+      max_usage: apiKeyCreateForm.max_usage || 0,
     });
     newKeyValue.value = data.key;
     showCreateDialog.value = false;
     showKeyDialog.value = true;
     apiKeyCreateForm.name = "";
     apiKeyCreateForm.expires_days = 0;
+    apiKeyCreateForm.allowed_ips = "";
+    apiKeyCreateForm.max_usage = 0;
     await fetchApiKeys();
   } catch (e) {
     ElMessage.error(e?.response?.data?.message || t("common.failed"));
@@ -517,6 +563,16 @@ async function onRevokeApiKey(row) {
     await apiKeyRevokeApi({ id: row.id });
     ElMessage.success(t("userSettings.apiKeyRevoked"));
     await fetchApiKeys();
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || t("common.failed"));
+  }
+}
+
+async function onViewApiKeyLogs(row) {
+  try {
+    const data = await apiKeyLogsApi({ key_id: row.id });
+    apiKeyLogs.value = data.logs || [];
+    showApiKeyLogsDialog.value = true;
   } catch (e) {
     ElMessage.error(e?.response?.data?.message || t("common.failed"));
   }

@@ -27,12 +27,16 @@ MAXMIND_ASN_URL = (
 
 MIRROR_URLS = {
     "city": [
-        "https://mirrors.dnscrypt.me/GeoLite2-City.mmdb",
-        "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb/GeoLite2-City.mmdb",
+        "https://raw.gitmirror.com/adysec/IP_database/main/geolite/GeoLite2-City.mmdb",
+        "https://mirror.ghproxy.com/https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-City.mmdb",
+        "https://ghproxy.net/https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-City.mmdb",
+        "https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-City.mmdb",
     ],
     "asn": [
-        "https://mirrors.dnscrypt.me/GeoLite2-ASN.mmdb",
-        "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb/GeoLite2-ASN.mmdb",
+        "https://raw.gitmirror.com/adysec/IP_database/main/geolite/GeoLite2-ASN.mmdb",
+        "https://mirror.ghproxy.com/https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-ASN.mmdb",
+        "https://ghproxy.net/https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-ASN.mmdb",
+        "https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-ASN.mmdb",
     ],
 }
 

@@ -123,8 +123,8 @@ class ThreatIntelFeedStatusAdmin(ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(ModelAdmin):
-    list_display = ("user", "two_factor_enabled", "two_factor_secret")
+    list_display = ("user", "two_factor_enabled", "two_factor_fail_count", "two_factor_locked_until", "language")
     search_fields = ("user__username", "user__email")
-    list_filter = ("two_factor_enabled",)
+    list_filter = ("two_factor_enabled", "two_factor_locked_until")
     list_filter_submit = True
-    readonly_fields = ("two_factor_secret",)
+    readonly_fields = ("two_factor_secret", "recovery_codes")

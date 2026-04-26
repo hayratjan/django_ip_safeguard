@@ -1138,7 +1138,13 @@ def two_factor_status_view(request: HttpRequest) -> JsonResponse:
     if not user.is_authenticated:
         return api_error(_("未登录"), code=4010, status=401)
     profile = _get_user_profile(user)
-    return api_success({"enabled": profile.two_factor_enabled})
+    locked = profile.is_2fa_locked()
+    return api_success({
+        "enabled": profile.two_factor_enabled,
+        "locked": locked,
+        "lock_remaining_seconds": profile.get_2fa_lock_remaining_seconds() if locked else 0,
+        "fail_count": profile.two_factor_fail_count,
+    })
 
 
 @csrf_protect
@@ -1156,7 +1162,8 @@ def two_factor_setup_view(request: HttpRequest) -> JsonResponse:
     profile = _get_user_profile(user)
     profile.two_factor_secret = secret
     profile.two_factor_enabled = False
-    profile.save(update_fields=["two_factor_secret", "two_factor_enabled"])
+    profile.clear_2fa_failure()
+    profile.save(update_fields=["two_factor_secret", "two_factor_enabled", "two_factor_fail_count", "two_factor_locked_until"])
     provisioning_uri = pyotp.totp.TOTP(secret).provisioning_uri(
         name=user.email or user.username, issuer_name="IP Guard"
     )
@@ -1226,7 +1233,8 @@ def two_factor_disable_view(request: HttpRequest) -> JsonResponse:
     profile.two_factor_secret = ""
     profile.two_factor_enabled = False
     profile.recovery_codes = []
-    profile.save(update_fields=["two_factor_secret", "two_factor_enabled", "recovery_codes"])
+    profile.clear_2fa_failure()
+    profile.save(update_fields=["two_factor_secret", "two_factor_enabled", "recovery_codes", "two_factor_fail_count", "two_factor_locked_until"])
     _log_security_audit(request, "2fa_disable", f"user={user.username}", user)
     return api_success(message=_("2FA 已禁用"))
 
