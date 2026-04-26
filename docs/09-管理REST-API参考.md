@@ -273,8 +273,108 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 
 ---
 
-## 9.13 相关文档
+## 9.13 定时任务管理
 
+### 9.13.1 `GET /ip-guard/api/scheduled-tasks/`
+
+- **权限**：`view_scheduledtask`
+- **说明**：获取定时任务列表，支持分页和过滤
+- **Query 参数**：
+  - `page`：页码，默认 `1`
+  - `page_size`：每页条数，默认 `20`
+  - `enabled`：筛选启用状态（`true`/`false`）
+  - `task_type`：筛选任务类型（如 `geoip2_update`）
+- **返回**：
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "name": "GeoIP2数据库更新",
+        "task_type": "geoip2_update",
+        "task_type_display": "GeoIP2 数据库更新",
+        "command": "",
+        "cron_expression": "",
+        "cron_preset": "@monthly",
+        "cron_preset_display": "每月",
+        "interval_minutes": 0,
+        "schedule_display": "每月",
+        "enabled": true,
+        "description": "自动更新 GeoIP2 数据库",
+        "last_run_at": "2026-04-01T03:00:00",
+        "last_run_status": "success",
+        "last_run_output": "",
+        "next_run_at": "2026-05-01T03:00:00",
+        "run_count": 4,
+        "success_count": 4,
+        "failure_count": 0,
+        "created_at": "2026-01-01T00:00:00",
+        "updated_at": "2026-04-01T03:00:00"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total": 4,
+      "num_pages": 1
+    }
+  }
+}
+```
+
+### 9.13.2 `POST /ip-guard/api/scheduled-tasks/`
+
+- **权限**：`add_scheduledtask`
+- **说明**：创建新的定时任务
+- **Body**：
+```json
+{
+  "name": "自定义任务",
+  "task_type": "custom",
+  "cron_preset": "@daily",
+  "enabled": true,
+  "description": "这是一个自定义任务",
+  "command": "sync_geo_ip_pools --force"
+}
+```
+- **任务类型说明**：
+  - `geoip2_update`：GeoIP2 数据库更新
+  - `threat_intel_sync`：威胁情报同步
+  - `ip_reputation_snapshot`：IP 信誉快照
+  - `geo_pool_sync`：地理IP池同步
+  - `custom`：自定义命令
+- **调度方式**：
+  - `cron_preset`：预设周期（`@hourly`/`@daily`/`@weekly`/`@monthly`）
+  - `cron_expression`：自定义 Cron 表达式（如 `0 3 * * *`）
+  - `interval_minutes`：执行间隔分钟数（与 Cron 二选一）
+
+### 9.13.3 `GET /ip-guard/api/scheduled-tasks/<task_id>/`
+
+- **权限**：`view_scheduledtask`
+- **说明**：获取单个定时任务详情
+
+### 9.13.4 `PUT /ip-guard/api/scheduled-tasks/<task_id>/`
+
+- **权限**：`change_scheduledtask`
+- **说明**：更新定时任务配置
+- **Body**：同创建，仅提交需修改的字段
+
+### 9.13.5 `DELETE /ip-guard/api/scheduled-tasks/<task_id>/`
+
+- **权限**：`delete_scheduledtask`
+- **说明**：删除定时任务
+
+### 9.13.6 `POST /ip-guard/api/scheduled-tasks/<task_id>/run/`
+
+- **权限**：`change_scheduledtask`
+- **说明**：手动触发任务立即执行
+
+---
+
+## 9.14 相关文档
 - 认证：[10-认证CSRF-JWT与权限模型](./10-认证CSRF-JWT与权限模型.md)  
 - 策略字段：[05-策略中心与数据库模型](./05-策略中心与数据库模型.md)  
 - 地理池：[06-地理IP池与定时同步](./06-地理IP池与定时同步.md)
