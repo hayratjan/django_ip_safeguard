@@ -20,6 +20,9 @@ dependencies = [
   "django-unfold>=0.40.0",
   "pyotp>=2.9.0",
   "qrcode>=7.4",
+  "celery>=5.3.0",
+  "django-celery-beat>=2.5.0",
+  "croniter>=2.0.0",
 ]
 classifiers = [
   "Framework :: Django",
