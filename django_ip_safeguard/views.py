@@ -1559,25 +1559,79 @@ def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
 @api_permission_required("django_ip_safeguard.view_ipguardpolicy")
 @require_http_methods(["GET", "POST"])
 def system_settings_view(request: HttpRequest) -> JsonResponse:
-    from django.conf import settings
+    from django.conf import settings as django_settings
+    cfg = get_settings()
+
     if request.method == "GET":
-        cfg = get_settings()
+        policy, _ = IpGuardPolicy.objects.get_or_create(name="default")
         return api_success({
+            # 可通过 API 修改的配置项（来自 IpGuardPolicy）
+            "use_db_log": policy.use_db_log,
+            "fail_open": policy.fail_open,
+            "block_status_code": policy.block_status_code,
+            "rate_limit_per_minute": policy.rate_limit_per_minute,
+            "risk_score_threshold": policy.risk_score_threshold,
+            "cache_ttl": policy.cache_ttl,
+            "ban_ttl": policy.ban_ttl,
+            "china_pool_rule": policy.china_pool_rule,
+            "international_pool_rule": policy.international_pool_rule,
+            # Django settings 配置项（只读）
+            "enabled": cfg.enabled,
+            "provider": cfg.provider,
+            "provider_endpoint": cfg.provider_endpoint,
+            "provider_timeout": cfg.provider_timeout,
+            "provider_max_retries": cfg.provider_max_retries,
+            "risk_score_threshold_max": 100,
+            "rate_limit_max": 100000,
+            "cache_ttl_min": 60,
+            "ban_ttl_min": 60,
             "ip_mask_enabled": cfg.ip_mask_enabled,
             "ip_mask_keep_prefix": cfg.ip_mask_keep_prefix,
-            "use_db_log": cfg.use_db_log,
-            "fail_open": cfg.fail_open,
-            "block_status_code": cfg.block_status_code,
-            "rate_limit_per_minute": cfg.rate_limit_per_minute,
-            "risk_score_threshold": cfg.risk_score_threshold,
-            "cache_ttl": cfg.cache_ttl,
-            "ban_ttl": cfg.ban_ttl,
-            "provider": cfg.provider,
-            "china_pool_rule": cfg.china_pool_rule,
-            "international_pool_rule": cfg.international_pool_rule,
-            "login_fail_limit": getattr(settings, "IP_GUARD_LOGIN_FAIL_LIMIT", 5),
-            "login_fail_lock_seconds": getattr(settings, "IP_GUARD_LOGIN_FAIL_LOCK_SECONDS", 300),
-            "password_max_age_days": getattr(settings, "IP_GUARD_PASSWORD_MAX_AGE_DAYS", 0),
+            "block_status_code_range": {"min": 400, "max": 499},
+            # 分层缓存配置
+            "l1_cache_enabled": cfg.l1_cache_enabled,
+            "l1_cache_ttl": cfg.l1_cache_ttl,
+            "l1_cache_max_size": cfg.l1_cache_max_size,
+            # 本地风险规则引擎
+            "local_risk_engine_enabled": cfg.local_risk_engine_enabled,
+            "local_risk_subnet_attack_threshold": cfg.local_risk_subnet_attack_threshold,
+            # 威胁情报订阅
+            "threat_intel_enabled": cfg.threat_intel_enabled,
+            "threat_intel_spamhaus_enabled": cfg.threat_intel_spamhaus_enabled,
+            "threat_intel_tor_enabled": cfg.threat_intel_tor_enabled,
+            "threat_intel_emerging_enabled": cfg.threat_intel_emerging_enabled,
+            # IP 关联分析
+            "ip_correlation_enabled": cfg.ip_correlation_enabled,
+            # IP 信誉历史
+            "ip_reputation_enabled": cfg.ip_reputation_enabled,
+            "ip_reputation_snapshot_interval": cfg.ip_reputation_snapshot_interval,
+            # GeoIP2 配置
+            "geoip2_enabled": cfg.geoip2_enabled,
+            "geoip2_city_db_path": cfg.geoip2_city_db_path,
+            "geoip2_asn_db_path": cfg.geoip2_asn_db_path,
+            # Provider Chain 配置
+            "provider_chain_enabled": cfg.provider_chain_enabled,
+            "provider_chain_names": list(cfg.provider_chain_names),
+            # CIDR 多源备份
+            "geo_pool_multi_source_enabled": cfg.geo_pool_multi_source_enabled,
+            "geo_china_pool_url": cfg.geo_china_pool_url,
+            "geo_international_pool_url": cfg.geo_international_pool_url,
+            "geo_china_pool_backup_urls": list(cfg.geo_china_pool_backup_urls),
+            "geo_international_pool_backup_urls": list(cfg.geo_international_pool_backup_urls),
+            # 熔断器配置
+            "provider_circuit_breaker_failures": cfg.provider_circuit_breaker_failures,
+            "provider_circuit_breaker_ttl": cfg.provider_circuit_breaker_ttl,
+            # 高低风险缓存
+            "high_risk_cache_ttl": cfg.high_risk_cache_ttl,
+            "low_risk_cache_ttl": cfg.low_risk_cache_ttl,
+            # 防重放锁
+            "dedupe_lock_seconds": cfg.dedupe_lock_seconds,
+            # 认证配置
+            "login_fail_limit": getattr(django_settings, "IP_GUARD_LOGIN_FAIL_LIMIT", 5),
+            "login_fail_lock_seconds": getattr(django_settings, "IP_GUARD_LOGIN_FAIL_LOCK_SECONDS", 300),
+            "password_max_age_days": getattr(django_settings, "IP_GUARD_PASSWORD_MAX_AGE_DAYS", 0),
+            "jwt_access_token_ttl_seconds": cfg.jwt_access_token_ttl_seconds,
+            "jwt_refresh_token_ttl_seconds": cfg.jwt_refresh_token_ttl_seconds,
         })
 
     try:
@@ -1586,7 +1640,7 @@ def system_settings_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("JSON 格式错误"), code=4001, status=400)
 
     policy, _created = IpGuardPolicy.objects.get_or_create(name="default")
-    mapping = {
+    editable_mapping = {
         "use_db_log": "use_db_log",
         "fail_open": "fail_open",
         "block_status_code": "block_status_code",
@@ -1597,7 +1651,7 @@ def system_settings_view(request: HttpRequest) -> JsonResponse:
         "china_pool_rule": "china_pool_rule",
         "international_pool_rule": "international_pool_rule",
     }
-    for api_key, model_key in mapping.items():
+    for api_key, model_key in editable_mapping.items():
         if api_key in payload:
             val = payload[api_key]
             if api_key in ("china_pool_rule", "international_pool_rule"):
