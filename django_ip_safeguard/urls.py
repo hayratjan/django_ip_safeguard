@@ -28,6 +28,9 @@ from django_ip_safeguard.views import (
     logout_view,
     policy_view,
     recent_records_view,
+    scheduled_task_detail_view,
+    scheduled_task_list_view,
+    scheduled_task_run_view,
     security_audit_log_view,
     system_settings_view,
     two_factor_disable_view,
@@ -82,4 +85,7 @@ urlpatterns = [
     path("api/user-stats-chart/", user_stats_chart_view, name="user_stats_chart_api"),
     path("api/security-audit-logs/", security_audit_log_view, name="security_audit_log_api"),
     path("api/system-settings/", system_settings_view, name="system_settings_api"),
+    path("api/scheduled-tasks/", scheduled_task_list_view, name="scheduled_task_list_api"),
+    path("api/scheduled-tasks/<int:task_id>/", scheduled_task_detail_view, name="scheduled_task_detail_api"),
+    path("api/scheduled-tasks/<int:task_id>/run/", scheduled_task_run_view, name="scheduled_task_run_api"),
 ]

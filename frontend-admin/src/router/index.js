@@ -17,6 +17,7 @@ const routes = [
       { path: "user-settings", component: () => import("../views/UserSettingsView.vue") },
       { path: "user-chart", component: defineAsyncComponent(() => import("../views/UserChartView.vue")), meta: { perm: "django_ip_safeguard.view_ipaccesslog" } },
       { path: "system-settings", component: defineAsyncComponent(() => import("../views/SystemSettingsView.vue")), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
+      { path: "scheduled-tasks", component: defineAsyncComponent(() => import("../views/ScheduledTasksView.vue")), meta: { perm: "django_ip_safeguard.view_scheduledtask" } },
       { path: "security-audit", component: defineAsyncComponent(() => import("../views/SecurityAuditView.vue")), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
     ],
   },

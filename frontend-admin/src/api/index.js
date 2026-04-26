@@ -49,3 +49,10 @@ export const i18nLangSwitchApi = (payload) => http.post("/i18n/switch/", payload
 
 export const getSystemSettingsApi = () => http.get("/system-settings/");
 export const updateSystemSettingsApi = (payload) => http.post("/system-settings/", payload);
+
+export const getScheduledTaskListApi = (params) => http.get("/scheduled-tasks/", { params });
+export const createScheduledTaskApi = (payload) => http.post("/scheduled-tasks/", payload);
+export const getScheduledTaskDetailApi = (taskId) => http.get(`/scheduled-tasks/${taskId}/`);
+export const updateScheduledTaskApi = (taskId, payload) => http.put(`/scheduled-tasks/${taskId}/`, payload);
+export const deleteScheduledTaskApi = (taskId) => http.delete(`/scheduled-tasks/${taskId}/`);
+export const runScheduledTaskApi = (taskId) => http.post(`/scheduled-tasks/${taskId}/run/`);

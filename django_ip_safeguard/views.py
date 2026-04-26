@@ -22,7 +22,15 @@ from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
 from django_ip_safeguard.conf import get_settings
-from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy, UserProfile
+from django_ip_safeguard.models import (
+    IpAccessLog,
+    IpBanRecord,
+    IpGeoPoolStatus,
+    IpGuardPolicy,
+    ScheduledTask,
+    TaskExecutionLog,
+    UserProfile,
+)
 from django_ip_safeguard.services.audit_service import mask_ip
 from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.jwt_service import (
@@ -1670,3 +1678,187 @@ def security_audit_log_view(request: HttpRequest) -> JsonResponse:
             "num_pages": paginator.num_pages,
         },
     })
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_scheduledtask")
+@require_http_methods(["GET", "POST"])
+def scheduled_task_list_view(request: HttpRequest) -> JsonResponse:
+    if request.method == "GET":
+        page = _get_int_param(request, "page", 1)
+        page_size = _get_int_param(request, "page_size", 20)
+        enabled = request.GET.get("enabled")
+        task_type = str(request.GET.get("task_type", "")).strip()
+
+        queryset = ScheduledTask.objects.all().order_by("-created_at")
+        if enabled is not None:
+            enabled_bool = enabled.lower() in ("true", "1", "yes")
+            queryset = queryset.filter(enabled=enabled_bool)
+        if task_type:
+            queryset = queryset.filter(task_type=task_type)
+
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        items = []
+        for task in page_obj.object_list:
+            items.append({
+                "id": task.id,
+                "name": task.name,
+                "task_type": task.task_type,
+                "task_type_display": task.get_task_type_display(),
+                "command": task.command,
+                "cron_expression": task.cron_expression,
+                "cron_preset": task.cron_preset,
+                "cron_preset_display": task.get_cron_preset_display(),
+                "interval_minutes": task.interval_minutes,
+                "schedule_display": task.get_schedule_display(),
+                "enabled": task.enabled,
+                "description": task.description,
+                "last_run_at": task.last_run_at.isoformat() if task.last_run_at else None,
+                "last_run_status": task.last_run_status,
+                "last_run_output": task.last_run_output,
+                "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+                "run_count": task.run_count,
+                "success_count": task.success_count,
+                "failure_count": task.failure_count,
+                "created_at": task.created_at.isoformat(),
+                "updated_at": task.updated_at.isoformat(),
+            })
+        return api_success({
+            "items": items,
+            "pagination": {
+                "page": page_obj.number,
+                "page_size": page_size,
+                "total": paginator.count,
+                "num_pages": paginator.num_pages,
+            },
+        })
+
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        return api_error(_("任务名称不能为空"), code=4001, status=400)
+
+    if ScheduledTask.objects.filter(name=name).exists():
+        return api_error(_("任务名称已存在"), code=4001, status=400)
+
+    task_type = str(payload.get("task_type", "custom")).strip()
+    cron_preset = str(payload.get("cron_preset", "@daily")).strip()
+    cron_expression = str(payload.get("cron_expression", "")).strip()
+    interval_minutes = _get_int_param(request, "interval_minutes", 0)
+    enabled = payload.get("enabled", True)
+    description = str(payload.get("description", "")).strip()
+    command = str(payload.get("command", "")).strip()
+
+    task = ScheduledTask.objects.create(
+        name=name,
+        task_type=task_type,
+        command=command,
+        cron_expression=cron_expression,
+        cron_preset=cron_preset,
+        interval_minutes=interval_minutes,
+        enabled=enabled,
+        description=description,
+    )
+    task.next_run_at = task.calculate_next_run()
+    task.save(update_fields=["next_run_at"])
+
+    return api_success({
+        "id": task.id,
+        "name": task.name,
+        "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+    }, message=_("定时任务已创建"))
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.change_scheduledtask")
+@require_http_methods(["GET", "PUT", "DELETE"])
+def scheduled_task_detail_view(request: HttpRequest, task_id: int) -> JsonResponse:
+    try:
+        task = ScheduledTask.objects.get(id=task_id)
+    except ScheduledTask.DoesNotExist:
+        return api_error(_("任务不存在"), code=4040, status=404)
+
+    if request.method == "GET":
+        return api_success({
+            "id": task.id,
+            "name": task.name,
+            "task_type": task.task_type,
+            "task_type_display": task.get_task_type_display(),
+            "command": task.command,
+            "cron_expression": task.cron_expression,
+            "cron_preset": task.cron_preset,
+            "cron_preset_display": task.get_cron_preset_display(),
+            "interval_minutes": task.interval_minutes,
+            "schedule_display": task.get_schedule_display(),
+            "enabled": task.enabled,
+            "description": task.description,
+            "last_run_at": task.last_run_at.isoformat() if task.last_run_at else None,
+            "last_run_status": task.last_run_status,
+            "last_run_output": task.last_run_output,
+            "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+            "run_count": task.run_count,
+            "success_count": task.success_count,
+            "failure_count": task.failure_count,
+            "created_at": task.created_at.isoformat(),
+            "updated_at": task.updated_at.isoformat(),
+        })
+
+    if request.method == "DELETE":
+        task.delete()
+        return api_success(message=_("定时任务已删除"))
+
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+
+    if "name" in payload:
+        new_name = str(payload["name"]).strip()
+        if new_name != task.name and ScheduledTask.objects.filter(name=new_name).exists():
+            return api_error(_("任务名称已存在"), code=4001, status=400)
+        task.name = new_name
+
+    if "task_type" in payload:
+        task.task_type = str(payload["task_type"]).strip()
+    if "command" in payload:
+        task.command = str(payload["command"]).strip()
+    if "cron_expression" in payload:
+        task.cron_expression = str(payload["cron_expression"]).strip()
+    if "cron_preset" in payload:
+        task.cron_preset = str(payload["cron_preset"]).strip()
+    if "interval_minutes" in payload:
+        task.interval_minutes = int(payload["interval_minutes"])
+    if "enabled" in payload:
+        task.enabled = bool(payload["enabled"])
+    if "description" in payload:
+        task.description = str(payload["description"]).strip()
+
+    task.save()
+    task.next_run_at = task.calculate_next_run()
+    task.save(update_fields=["next_run_at"])
+
+    return api_success({
+        "id": task.id,
+        "name": task.name,
+        "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+    }, message=_("定时任务已更新"))
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.change_scheduledtask")
+@require_http_methods(["POST"])
+def scheduled_task_run_view(request: HttpRequest, task_id: int) -> JsonResponse:
+    try:
+        task = ScheduledTask.objects.get(id=task_id)
+    except ScheduledTask.DoesNotExist:
+        return api_error(_("任务不存在"), code=4040, status=404)
+
+    from django_ip_safeguard.services.task_scheduler import scheduler
+    scheduler._execute_task_async(task)
+
+    return api_success(message=_("任务已触发执行"))
