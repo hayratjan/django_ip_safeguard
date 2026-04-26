@@ -23,7 +23,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from django_ip_safeguard.conf import get_settings
 from django_ip_safeguard.models import IpAccessLog, IpBanRecord, IpGeoPoolStatus, IpGuardPolicy, UserProfile
-from django_ip_safeguard.services.audit_service import log_access_decision, mask_ip
+from django_ip_safeguard.services.audit_service import mask_ip
 from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.jwt_service import (
     get_user_from_access_token,
@@ -998,7 +998,7 @@ def i18n_lang_list_view(request: HttpRequest) -> JsonResponse:
 @require_http_methods(["POST"])
 def i18n_lang_switch_view(request: HttpRequest) -> JsonResponse:
     from django.conf import settings
-    from django.utils.translation import activate, get_language
+    from django.utils.translation import activate
     try:
         payload = _load_json_body(request)
     except json.JSONDecodeError:

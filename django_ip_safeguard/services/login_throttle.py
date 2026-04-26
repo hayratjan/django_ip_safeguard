@@ -1,6 +1,4 @@
-import json
 import logging
-import time
 from typing import Optional, Tuple
 
 from django_ip_safeguard.conf import get_settings
@@ -36,7 +34,6 @@ def check_login_throttle(ip: str, username: str) -> Optional[Tuple[int, int]]:
         return None
 
     max_failures = DEFAULT_MAX_FAILURES
-    lockout_seconds = DEFAULT_LOCKOUT_SECONDS
 
     for identifier in [ip, f"user:{username}"]:
         lock_key = _lock_key(identifier)
