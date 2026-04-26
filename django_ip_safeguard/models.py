@@ -1,5 +1,10 @@
+import hashlib
+import secrets
+import uuid
+
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
@@ -14,6 +19,11 @@ class UserProfile(models.Model):
     two_factor_secret = models.CharField(_("2FA密钥"), max_length=64, blank=True, default="")
     two_factor_enabled = models.BooleanField(_("2FA已启用"), default=False)
     language = models.CharField(_("界面语言"), max_length=10, blank=True, default="zh-hans")
+    pending_email = models.EmailField(_("待验证邮箱"), blank=True, default="")
+    email_verification_token = models.CharField(_("邮箱验证令牌"), max_length=64, blank=True, default="")
+    email_token_expires = models.DateTimeField(_("验证令牌过期时间"), null=True, blank=True)
+    recovery_codes = models.JSONField(_("2FA恢复码"), default=list, blank=True)
+    password_changed_at = models.DateTimeField(_("密码修改时间"), null=True, blank=True)
 
     class Meta:
         verbose_name = _("用户安全配置")
@@ -21,6 +31,65 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"Profile({self.user.username})"
+
+    @staticmethod
+    def generate_email_token() -> str:
+        return secrets.token_urlsafe(32)
+
+    def is_email_token_valid(self) -> bool:
+        if not self.email_verification_token or not self.email_token_expires:
+            return False
+        return timezone.now() < self.email_token_expires
+
+    def is_password_expired(self, max_age_days: int = 0) -> bool:
+        if max_age_days <= 0:
+            return False
+        if not self.password_changed_at:
+            return True
+        return (timezone.now() - self.password_changed_at).days > max_age_days
+
+
+class ApiKey(models.Model):
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+        verbose_name=_("用户"),
+    )
+    name = models.CharField(_("密钥名称"), max_length=64, default="default")
+    prefix = models.CharField(_("密钥前缀"), max_length=8, db_index=True)
+    key_hash = models.CharField(_("密钥哈希"), max_length=128, unique=True)
+    is_active = models.BooleanField(_("是否有效"), default=True)
+    expires_at = models.DateTimeField(_("过期时间"), null=True, blank=True)
+    last_used_at = models.DateTimeField(_("最后使用时间"), null=True, blank=True)
+    created_at = models.DateTimeField(_("创建时间"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("API密钥")
+        verbose_name_plural = _("API密钥")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"ApiKey({self.user.username}/{self.name}/{self.prefix}...)"
+
+    @staticmethod
+    def generate_key() -> tuple:
+        raw = f"ipg_{secrets.token_urlsafe(32)}"
+        prefix = raw[:8]
+        key_hash = hashlib.sha256(raw.encode()).hexdigest()
+        return raw, prefix, key_hash
+
+    @staticmethod
+    def hash_key(raw_key: str) -> str:
+        return hashlib.sha256(raw_key.encode()).hexdigest()
+
+    def is_valid(self) -> bool:
+        if not self.is_active:
+            return False
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False
+        return True
 
 
 class IpGuardPolicy(models.Model):

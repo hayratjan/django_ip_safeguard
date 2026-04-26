@@ -18,7 +18,7 @@
             </el-radio-group>
           </el-form-item>
           <el-form-item :label="t('systemSettings.primaryColor')">
-            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
               <div
                 v-for="color in themeStore.colorOptions"
                 :key="color.value"
@@ -33,6 +33,12 @@
                 }"
                 :title="color.label"
                 @click="themeStore.setPrimaryColor(color.value)"
+              />
+              <el-divider direction="vertical" />
+              <el-color-picker
+                v-model="customColor"
+                @change="onCustomColorChange"
+                :predefine="themeStore.colorOptions.map(c => c.value)"
               />
             </div>
           </el-form-item>
@@ -121,6 +127,7 @@ const authStore = useAuthStore();
 
 const activeTab = ref("general");
 const saveLoading = ref(false);
+const customColor = ref(themeStore.primaryColor);
 
 const languageForm = reactive({
   language: i18nStore.currentLocale,
@@ -144,6 +151,12 @@ const hasChangePerm = computed(() => authStore.hasPerm("django_ip_safeguard.chan
 
 function onLanguageChange(lang) {
   i18nStore.switchLocale(lang);
+}
+
+function onCustomColorChange(val) {
+  if (val) {
+    themeStore.setPrimaryColor(val);
+  }
 }
 
 async function fetchSettings() {

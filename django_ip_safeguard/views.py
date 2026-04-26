@@ -1,6 +1,8 @@
 import csv
+import hashlib
 import ipaddress
 import json
+import secrets
 import time
 from datetime import datetime, time as dt_time, timedelta
 from functools import wraps
@@ -285,6 +287,16 @@ def dashboard_page_view(request: HttpRequest) -> HttpResponse:
 @api_permission_required("django_ip_safeguard.view_ipaccesslog")
 @require_GET
 def dashboard_api_view(request: HttpRequest) -> JsonResponse:
+    cache_key = "dashboard:api:24h"
+    try:
+        cache_svc = RedisCacheService(get_settings().redis_url)
+        cached = cache_svc.client.get(cache_key)
+        if cached is not None:
+            import json as _json
+            return api_success(_json.loads(cached))
+    except Exception:
+        pass
+
     cfg = get_settings()
     since = timezone.now() - timedelta(days=1)
     today_logs = IpAccessLog.objects.filter(created_at__gte=since)
@@ -343,20 +355,26 @@ def dashboard_api_view(request: HttpRequest) -> JsonResponse:
         if b is not None:
             row["bucket"] = b.isoformat()
 
-    return api_success(
-        {
-            "total_count_24h": total_count,
-            "block_count_24h": blocked_count,
-            "allow_count_24h": allow_count,
-            "block_rate_24h": block_rate,
-            "decision_distribution": decision_distribution,
-            "top_risk_ips": top_risk_ips,
-            "country_distribution": country_distribution,
-            "top_paths": top_paths,
-            "top_block_reasons": top_block_reasons,
-            "hourly_trend": hourly_trend,
-        }
-    )
+    result_data = {
+        "total_count_24h": total_count,
+        "block_count_24h": blocked_count,
+        "allow_count_24h": allow_count,
+        "block_rate_24h": block_rate,
+        "decision_distribution": decision_distribution,
+        "top_risk_ips": top_risk_ips,
+        "country_distribution": country_distribution,
+        "top_paths": top_paths,
+        "top_block_reasons": top_block_reasons,
+        "hourly_trend": hourly_trend,
+    }
+
+    try:
+        cache_svc = RedisCacheService(get_settings().redis_url)
+        cache_svc.client.setex(cache_key, 120, json.dumps(result_data))
+    except Exception:
+        pass
+
+    return api_success(result_data)
 
 
 @csrf_protect
@@ -813,12 +831,30 @@ def login_view(request: HttpRequest) -> JsonResponse:
     password = str(payload.get("password", ""))
     if not username or not password:
         return api_error(_("用户名或密码不能为空"), code=4003, status=400)
+
+    client_ip = _get_client_ip(request)
+    from django_ip_safeguard.services.login_throttle import check_login_throttle, record_login_failure, clear_login_failures
+    throttle = check_login_throttle(client_ip, username)
+    if throttle:
+        ttl, max_f = throttle
+        return api_error(_("登录失败次数过多，请 %(ttl)s 秒后重试") % {"ttl": ttl}, code=4290, status=429)
+
     user = authenticate(request, username=username, password=password)
     if not user:
+        record_login_failure(client_ip, username)
         return api_error(_("用户名或密码错误"), code=4004, status=401)
     if not user.is_staff:
         return api_error(_("该账号无后台权限"), code=4030, status=403)
-    if _get_user_profile(user).two_factor_enabled:
+
+    profile = _get_user_profile(user)
+    from django.conf import settings as django_settings
+    password_max_age = getattr(django_settings, "IP_GUARD_PASSWORD_MAX_AGE_DAYS", 0)
+    if profile.is_password_expired(password_max_age):
+        return api_error(_("密码已过期，请先修改密码"), code=4012, status=401, data={"password_expired": True})
+
+    clear_login_failures(client_ip, username)
+
+    if profile.two_factor_enabled:
         request.session["2fa_pending_user_id"] = user.id
         request.session["2fa_pending_ts"] = time.time()
         return api_success({"2fa_required": True, "username": user.username}, message=_("需要双因素认证验证"))
@@ -837,12 +873,30 @@ def jwt_login_view(request: HttpRequest) -> JsonResponse:
     password = str(payload.get("password", ""))
     if not username or not password:
         return api_error(_("用户名或密码不能为空"), code=4003, status=400)
+
+    client_ip = _get_client_ip(request)
+    from django_ip_safeguard.services.login_throttle import check_login_throttle, record_login_failure, clear_login_failures
+    throttle = check_login_throttle(client_ip, username)
+    if throttle:
+        ttl, max_f = throttle
+        return api_error(_("登录失败次数过多，请 %(ttl)s 秒后重试") % {"ttl": ttl}, code=4290, status=429)
+
     user = authenticate(request, username=username, password=password)
     if not user:
+        record_login_failure(client_ip, username)
         return api_error(_("用户名或密码错误"), code=4004, status=401)
     if not user.is_staff:
         return api_error(_("该账号无后台权限"), code=4030, status=403)
-    if _get_user_profile(user).two_factor_enabled:
+
+    profile = _get_user_profile(user)
+    from django.conf import settings as django_settings
+    password_max_age = getattr(django_settings, "IP_GUARD_PASSWORD_MAX_AGE_DAYS", 0)
+    if profile.is_password_expired(password_max_age):
+        return api_error(_("密码已过期，请先修改密码"), code=4012, status=401, data={"password_expired": True})
+
+    clear_login_failures(client_ip, username)
+
+    if profile.two_factor_enabled:
         request.session["2fa_pending_user_id"] = user.id
         request.session["2fa_pending_ts"] = time.time()
         return api_success({"2fa_required": True, "username": user.username}, message=_("需要双因素认证验证"))
@@ -885,7 +939,12 @@ def two_factor_login_verify_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("2FA 密钥未设置"), code=4008, status=400)
     totp = pyotp.totp.TOTP(secret)
     if not totp.verify(code, valid_window=1):
-        return api_error(_("验证码不正确"), code=4004, status=400)
+        code_hash = hashlib.sha256(code.encode()).hexdigest()
+        if code_hash in (profile.recovery_codes or []):
+            profile.recovery_codes = [h for h in profile.recovery_codes if h != code_hash]
+            profile.save(update_fields=["recovery_codes"])
+        else:
+            return api_error(_("验证码不正确"), code=4004, status=400)
     request.session.pop("2fa_pending_user_id", None)
     request.session.pop("2fa_pending_ts", None)
     login_mode = str(payload.get("login_mode", "session")).strip().lower()
@@ -989,6 +1048,9 @@ def change_password_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("旧密码不正确"), code=4004, status=400)
     user.set_password(new_password)
     user.save(update_fields=["password"])
+    profile = _get_user_profile(user)
+    profile.password_changed_at = timezone.now()
+    profile.save(update_fields=["password_changed_at"])
     _log_security_audit(request, "password_change", f"user={user.username}", user)
     return api_success(message=_("密码修改成功"))
 
@@ -1013,10 +1075,48 @@ def change_email_view(request: HttpRequest) -> JsonResponse:
         validate_email(new_email)
     except DjangoValidationError:
         return api_error(_("邮箱格式不正确"), code=4002, status=400)
-    user.email = new_email
+    if new_email == user.email:
+        return api_error(_("新邮箱与当前邮箱相同"), code=4002, status=400)
+
+    profile = _get_user_profile(user)
+    token = UserProfile.generate_email_token()
+    profile.pending_email = new_email
+    profile.email_verification_token = token
+    profile.email_token_expires = timezone.now() + timedelta(hours=24)
+    profile.save(update_fields=["pending_email", "email_verification_token", "email_token_expires"])
+
+    from django_ip_safeguard.services.email_service import send_verification_email
+    email_sent = send_verification_email(new_email, token, user.username)
+    _log_security_audit(request, "email_change_request", f"user={user.username} pending_email={new_email}", user)
+
+    if email_sent:
+        return api_success({"pending_email": new_email, "email_sent": True}, message=_("验证邮件已发送，请查收邮箱并点击验证链接"))
+    else:
+        return api_success({"pending_email": new_email, "email_sent": False}, message=_("邮件发送失败，请联系管理员"))
+
+
+@csrf_protect
+@require_http_methods(["GET"])
+def verify_email_view(request: HttpRequest) -> JsonResponse:
+    token = str(request.GET.get("token", "")).strip()
+    if not token:
+        return api_error(_("验证令牌不能为空"), code=4002, status=400)
+    profile = UserProfile.objects.filter(email_verification_token=token).first()
+    if not profile:
+        return api_error(_("验证令牌无效"), code=4004, status=400)
+    if not profile.is_email_token_valid():
+        return api_error(_("验证令牌已过期，请重新申请"), code=4010, status=400)
+    if not profile.pending_email:
+        return api_error(_("没有待验证的邮箱"), code=4004, status=400)
+    user = profile.user
+    user.email = profile.pending_email
     user.save(update_fields=["email"])
-    _log_security_audit(request, "email_change", f"user={user.username} email={new_email}", user)
-    return api_success({"email": new_email}, message=_("邮箱修改成功"))
+    profile.pending_email = ""
+    profile.email_verification_token = ""
+    profile.email_token_expires = None
+    profile.save(update_fields=["pending_email", "email_verification_token", "email_token_expires"])
+    _log_security_audit(request, "email_change_confirm", f"user={user.username} email={user.email}", user)
+    return api_success({"email": user.email}, message=_("邮箱验证成功"))
 
 
 @csrf_protect
@@ -1077,10 +1177,14 @@ def two_factor_verify_view(request: HttpRequest) -> JsonResponse:
     totp = pyotp.totp.TOTP(secret)
     if not totp.verify(code, valid_window=1):
         return api_error(_("验证码不正确"), code=4004, status=400)
+
+    recovery_codes = [secrets.token_hex(4).upper() for _ in range(8)]
+    hashed_codes = [hashlib.sha256(rc.encode()).hexdigest() for rc in recovery_codes]
+    profile.recovery_codes = hashed_codes
     profile.two_factor_enabled = True
-    profile.save(update_fields=["two_factor_enabled"])
+    profile.save(update_fields=["two_factor_enabled", "recovery_codes"])
     _log_security_audit(request, "2fa_enable", f"user={user.username}", user)
-    return api_success(message=_("2FA 已启用"))
+    return api_success({"recovery_codes": recovery_codes}, message=_("2FA 已启用，请妥善保存恢复码"))
 
 
 @csrf_protect
@@ -1109,9 +1213,124 @@ def two_factor_disable_view(request: HttpRequest) -> JsonResponse:
             return api_error(_("验证码不正确"), code=4004, status=400)
     profile.two_factor_secret = ""
     profile.two_factor_enabled = False
-    profile.save(update_fields=["two_factor_secret", "two_factor_enabled"])
+    profile.recovery_codes = []
+    profile.save(update_fields=["two_factor_secret", "two_factor_enabled", "recovery_codes"])
     _log_security_audit(request, "2fa_disable", f"user={user.username}", user)
     return api_success(message=_("2FA 已禁用"))
+
+
+@csrf_protect
+@require_http_methods(["POST"])
+def api_key_login_view(request: HttpRequest) -> JsonResponse:
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    api_key = str(payload.get("api_key", "")).strip()
+    if not api_key:
+        return api_error(_("API 密钥不能为空"), code=4002, status=400)
+    from django_ip_safeguard.models import ApiKey
+    key_hash = ApiKey.hash_key(api_key)
+    try:
+        obj = ApiKey.objects.select_related("user").get(key_hash=key_hash)
+    except ApiKey.DoesNotExist:
+        return api_error(_("API 密钥无效"), code=4004, status=401)
+    if not obj.is_valid():
+        return api_error(_("API 密钥已失效或过期"), code=4004, status=401)
+    user = obj.user
+    if not user.is_active or not user.is_staff:
+        return api_error(_("该账号无后台权限"), code=4030, status=403)
+    obj.last_used_at = timezone.now()
+    obj.save(update_fields=["last_used_at"])
+    login_mode = str(payload.get("login_mode", "jwt")).strip().lower()
+    if login_mode == "session":
+        login(request, user)
+        return api_success({"username": user.username}, message=_("API 密钥登录成功"))
+    return api_success(issue_token_pair(user), message=_("API 密钥登录成功"))
+
+
+@csrf_protect
+@api_permission_required()
+@require_GET
+def api_key_list_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    from django_ip_safeguard.models import ApiKey
+    keys = ApiKey.objects.filter(user=user).order_by("-created_at")
+    data = []
+    for k in keys:
+        data.append({
+            "id": k.id,
+            "name": k.name,
+            "prefix": k.prefix,
+            "is_active": k.is_active,
+            "expires_at": k.expires_at.isoformat() if k.expires_at else None,
+            "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+            "created_at": k.created_at.isoformat() if k.created_at else None,
+        })
+    return api_success(data)
+
+
+@csrf_protect
+@api_permission_required()
+@require_http_methods(["POST"])
+def api_key_create_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    name = str(payload.get("name", "default")).strip()[:64]
+    from django_ip_safeguard.models import ApiKey
+    raw_key, prefix, key_hash = ApiKey.generate_key()
+    expires_days = int(payload.get("expires_days", 0) or 0)
+    expires_at = None
+    if expires_days > 0:
+        expires_at = timezone.now() + timedelta(days=expires_days)
+    obj = ApiKey.objects.create(
+        user=user,
+        name=name,
+        prefix=prefix,
+        key_hash=key_hash,
+        expires_at=expires_at,
+    )
+    _log_security_audit(request, "api_key_create", f"user={user.username} name={name}", user)
+    return api_success({
+        "id": obj.id,
+        "name": obj.name,
+        "key": raw_key,
+        "prefix": obj.prefix,
+        "expires_at": obj.expires_at.isoformat() if obj.expires_at else None,
+        "created_at": obj.created_at.isoformat() if obj.created_at else None,
+    }, message=_("API 密钥创建成功"))
+
+
+@csrf_protect
+@api_permission_required()
+@require_http_methods(["POST"])
+def api_key_revoke_view(request: HttpRequest) -> JsonResponse:
+    user = _resolve_request_user(request)
+    if not user.is_authenticated:
+        return api_error(_("未登录"), code=4010, status=401)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    key_id = payload.get("id")
+    if not key_id:
+        return api_error(_("密钥 ID 不能为空"), code=4002, status=400)
+    from django_ip_safeguard.models import ApiKey
+    try:
+        obj = ApiKey.objects.get(pk=key_id, user=user)
+    except ApiKey.DoesNotExist:
+        return api_error(_("密钥不存在"), code=4004, status=404)
+    obj.is_active = False
+    obj.save(update_fields=["is_active"])
+    _log_security_audit(request, "api_key_revoke", f"user={user.username} key_id={key_id}", user)
+    return api_success(message=_("API 密钥已吊销"))
 
 
 @csrf_protect
@@ -1273,3 +1492,57 @@ def system_settings_view(request: HttpRequest) -> JsonResponse:
     policy.save()
     invalidate_policy_cache()
     return api_success(message=_("系统设置已更新"))
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipaccesslog")
+@require_GET
+def security_audit_log_view(request: HttpRequest) -> JsonResponse:
+    page = _get_int_param(request, "page", 1)
+    page_size = _get_int_param(request, "page_size", 20)
+    action = str(request.GET.get("action", "")).strip()
+    start_s = str(request.GET.get("start", "")).strip()
+    end_s = str(request.GET.get("end", "")).strip()
+
+    queryset = IpAccessLog.objects.filter(decision="security_audit").order_by("-created_at")
+    if action:
+        queryset = queryset.filter(reason__icontains=f"[{action}]")
+    if start_s:
+        d = parse_date(start_s)
+        if d:
+            start_dt = timezone.make_aware(datetime.combine(d, dt_time.min))
+            queryset = queryset.filter(created_at__gte=start_dt)
+    if end_s:
+        d = parse_date(end_s)
+        if d:
+            end_dt = timezone.make_aware(datetime.combine(d, dt_time.max))
+            queryset = queryset.filter(created_at__lte=end_dt)
+
+    paginator = Paginator(queryset, page_size)
+    page_obj = paginator.get_page(page)
+    items = []
+    for item in page_obj.object_list:
+        reason = item.reason or ""
+        action_type = ""
+        detail = reason
+        if reason.startswith("[") and "]" in reason:
+            bracket_end = reason.index("]")
+            action_type = reason[1:bracket_end]
+            detail = reason[bracket_end + 1:].strip()
+        items.append({
+            "id": item.id,
+            "action": action_type,
+            "detail": detail,
+            "ip": item.ip,
+            "path": item.path,
+            "created_at": item.created_at.isoformat(),
+        })
+    return api_success({
+        "items": items,
+        "pagination": {
+            "page": page_obj.number,
+            "page_size": page_size,
+            "total": paginator.count,
+            "num_pages": paginator.num_pages,
+        },
+    })

@@ -20,6 +20,10 @@ const COLOR_OPTIONS = [
   { value: "#06b6d4", label: "青色" },
 ];
 
+function isValidHex(hex) {
+  return /^#[0-9a-fA-F]{6}$/.test(hex);
+}
+
 function getSystemTheme() {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
@@ -81,6 +85,7 @@ export const useThemeStore = defineStore("theme", {
       applyTheme(theme);
     },
     setPrimaryColor(color) {
+      if (!isValidHex(color)) return;
       this.primaryColor = color;
       localStorage.setItem(COLOR_KEY, color);
       applyColor(color);

@@ -119,6 +119,85 @@
           </el-form>
         </template>
       </el-tab-pane>
+
+      <el-tab-pane :label="t('userSettings.apiKeys')" name="apikey">
+        <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center">
+          <span style="color: #606266; font-size: 14px">{{ t('userSettings.noApiKeys') }}</span>
+          <el-button type="primary" @click="showCreateDialog = true">
+            {{ t('userSettings.createApiKey') }}
+          </el-button>
+        </div>
+
+        <el-table :data="apiKeyList" style="width: 100%" v-if="apiKeyList.length > 0" stripe>
+          <el-table-column prop="name" :label="t('userSettings.apiKeyName')" width="140" />
+          <el-table-column prop="prefix" :label="t('userSettings.apiKeyPrefix')" width="100" />
+          <el-table-column :label="t('userSettings.apiKeyStatus')" width="90">
+            <template #default="{ row }">
+              <el-tag v-if="!row.is_active" type="info" size="small">{{ t('userSettings.apiKeyRevoked') }}</el-tag>
+              <el-tag v-else-if="row.expires_at && new Date(row.expires_at) < new Date()" type="warning" size="small">{{ t('userSettings.apiKeyExpired') }}</el-tag>
+              <el-tag v-else type="success" size="small">{{ t('userSettings.apiKeyActive') }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('userSettings.apiKeyExpires')" width="170">
+            <template #default="{ row }">
+              {{ row.expires_at ? new Date(row.expires_at).toLocaleString() : t('userSettings.apiKeyNoExpiry') }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('userSettings.apiKeyLastUsed')" width="170">
+            <template #default="{ row }">
+              {{ row.last_used_at ? new Date(row.last_used_at).toLocaleString() : '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('userSettings.apiKeyCreatedAt')" width="170">
+            <template #default="{ row }">
+              {{ row.created_at ? new Date(row.created_at).toLocaleString() : '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('common.action')" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.is_active"
+                type="danger"
+                size="small"
+                link
+                @click="onRevokeApiKey(row)"
+              >
+                {{ t('userSettings.revokeApiKey') }}
+              </el-button>
+              <span v-else style="color: #909399; font-size: 12px">—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <el-dialog v-model="showCreateDialog" :title="t('userSettings.createApiKey')" width="460px" :close-on-click-modal="false">
+          <el-form :model="apiKeyCreateForm" label-width="120px">
+            <el-form-item :label="t('userSettings.apiKeyName')">
+              <el-input v-model="apiKeyCreateForm.name" :placeholder="t('userSettings.apiKeyNamePlaceholder')" />
+            </el-form-item>
+            <el-form-item :label="t('userSettings.apiKeyExpiresDays')">
+              <el-input-number v-model="apiKeyCreateForm.expires_days" :min="0" :max="3650" />
+              <div style="margin-top: 4px; font-size: 12px; color: #909399">{{ t('userSettings.apiKeyExpiresDaysHint') }}</div>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="showCreateDialog = false">{{ t('common.cancel') }}</el-button>
+            <el-button type="primary" :loading="apiKeyCreating" @click="onCreateApiKey">{{ t('common.save') }}</el-button>
+          </template>
+        </el-dialog>
+
+        <el-dialog v-model="showKeyDialog" :title="t('userSettings.apiKeyCreated')" width="520px" :close-on-click-modal="false" :show-close="true" @close="onKeyDialogClose">
+          <el-alert type="warning" :title="t('userSettings.apiKeyWarning')" show-icon :closable="false" style="margin-bottom: 16px" />
+          <el-input
+            v-model="newKeyValue"
+            readonly
+            type="textarea"
+            :rows="3"
+          />
+          <template #footer>
+            <el-button type="primary" @click="onCopyKey">{{ t('common.copy') || 'Copy' }}</el-button>
+          </template>
+        </el-dialog>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -126,7 +205,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
   userProfileApi,
   changePasswordApi,
@@ -135,6 +214,9 @@ import {
   twoFactorSetupApi,
   twoFactorVerifyApi,
   twoFactorDisableApi,
+  apiKeyListApi,
+  apiKeyCreateApi,
+  apiKeyRevokeApi,
 } from "../api";
 
 const { t } = useI18n();
@@ -335,8 +417,80 @@ async function onDisable2FA() {
   }
 }
 
+const apiKeyList = ref([]);
+const showCreateDialog = ref(false);
+const showKeyDialog = ref(false);
+const apiKeyCreating = ref(false);
+const newKeyValue = ref("");
+const apiKeyCreateForm = reactive({
+  name: "",
+  expires_days: 0,
+});
+
+async function fetchApiKeys() {
+  try {
+    const data = await apiKeyListApi();
+    apiKeyList.value = Array.isArray(data) ? data : [];
+  } catch {
+    // ignore
+  }
+}
+
+async function onCreateApiKey() {
+  apiKeyCreating.value = true;
+  try {
+    const data = await apiKeyCreateApi({
+      name: apiKeyCreateForm.name || "default",
+      expires_days: apiKeyCreateForm.expires_days,
+    });
+    newKeyValue.value = data.key;
+    showCreateDialog.value = false;
+    showKeyDialog.value = true;
+    apiKeyCreateForm.name = "";
+    apiKeyCreateForm.expires_days = 0;
+    await fetchApiKeys();
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || t("common.failed"));
+  } finally {
+    apiKeyCreating.value = false;
+  }
+}
+
+async function onRevokeApiKey(row) {
+  try {
+    await ElMessageBox.confirm(t("userSettings.revokeConfirm"), t("common.confirm"), {
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+  try {
+    await apiKeyRevokeApi({ id: row.id });
+    ElMessage.success(t("userSettings.apiKeyRevoked"));
+    await fetchApiKeys();
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || t("common.failed"));
+  }
+}
+
+async function onCopyKey() {
+  try {
+    await navigator.clipboard.writeText(newKeyValue.value);
+    ElMessage.success(t("userSettings.apiKeyCopySuccess"));
+  } catch {
+    ElMessage.error(t("userSettings.apiKeyCopyFailed"));
+  }
+}
+
+function onKeyDialogClose() {
+  newKeyValue.value = "";
+}
+
 onMounted(() => {
   fetchProfile();
   fetch2FAStatus();
+  fetchApiKeys();
 });
 </script>

@@ -33,29 +33,57 @@
               <el-radio-group v-model="loginMode" size="large">
                 <el-radio-button label="session">{{ t('login.sessionMode') }}</el-radio-button>
                 <el-radio-button label="jwt">{{ t('login.jwtMode') }}</el-radio-button>
+                <el-radio-button label="apikey">{{ t('login.apiKeyMode') }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
-            <el-form-item :label="t('login.username')">
-              <el-input
-                v-model="form.username"
-                size="large"
-                :placeholder="t('login.usernamePlaceholder')"
-                clearable
-                autocomplete="username"
+            <template v-if="loginMode !== 'apikey'">
+              <el-form-item :label="t('login.username')">
+                <el-input
+                  v-model="form.username"
+                  size="large"
+                  :placeholder="t('login.usernamePlaceholder')"
+                  clearable
+                  autocomplete="username"
+                />
+              </el-form-item>
+              <el-form-item :label="t('login.password')">
+                <el-input
+                  v-model="form.password"
+                  type="password"
+                  size="large"
+                  :placeholder="t('login.passwordPlaceholder')"
+                  show-password
+                  autocomplete="current-password"
+                  @keyup.enter="onLogin"
+                />
+              </el-form-item>
+            </template>
+            <template v-else>
+              <el-alert
+                :title="t('login.apiKeyHint')"
+                type="info"
+                show-icon
+                :closable="false"
+                style="margin-bottom: 16px"
               />
-            </el-form-item>
-            <el-form-item :label="t('login.password')">
-              <el-input
-                v-model="form.password"
-                type="password"
-                size="large"
-                :placeholder="t('login.passwordPlaceholder')"
-                show-password
-                autocomplete="current-password"
-                @keyup.enter="onLogin"
-              />
-            </el-form-item>
-            <el-button type="primary" size="large" :loading="loading" class="login-btn" native-type="submit" @click="onLogin">
+              <el-form-item :label="t('login.apiKeyMode')">
+                <el-input
+                  v-model="apiKeyForm.api_key"
+                  size="large"
+                  :placeholder="t('login.apiKeyPlaceholder')"
+                  clearable
+                  @keyup.enter="onApiKeyLogin"
+                />
+              </el-form-item>
+            </template>
+            <el-button
+              type="primary"
+              size="large"
+              :loading="loading"
+              class="login-btn"
+              native-type="submit"
+              @click="loginMode === 'apikey' ? onApiKeyLogin() : onLogin()"
+            >
               {{ t('login.submit') }}
             </el-button>
           </el-form>
@@ -105,7 +133,7 @@ import { computed, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
-import { clearJwtTokens, getCsrf, jwtLoginApi, loginApi, setJwtTokens, twoFactorLoginVerifyApi } from "../api";
+import { clearJwtTokens, getCsrf, jwtLoginApi, loginApi, setJwtTokens, twoFactorLoginVerifyApi, apiKeyLoginApi } from "../api";
 import { useAuthStore } from "../stores/auth";
 import { useI18nStore } from "../stores/i18n";
 import logoUrl from "../assets/logo.svg?url";
@@ -120,6 +148,7 @@ const loginMode = ref("session");
 const twoFARequired = ref(false);
 const form = reactive({ username: "", password: "" });
 const twoFAForm = reactive({ code: "" });
+const apiKeyForm = reactive({ api_key: "" });
 
 const currentLangLabel = computed(() => {
   const lang = i18nStore.languages.find((l) => l.code === i18nStore.currentLocale);
@@ -190,6 +219,33 @@ const on2FAVerify = async () => {
 const on2FACancel = () => {
   twoFARequired.value = false;
   twoFAForm.code = "";
+};
+
+const onApiKeyLogin = async () => {
+  if (!apiKeyForm.api_key.trim()) {
+    ElMessage.warning(t('login.apiKeyPlaceholder'));
+    return;
+  }
+  loading.value = true;
+  try {
+    await getCsrf();
+    clearJwtTokens();
+    const data = await apiKeyLoginApi({
+      api_key: apiKeyForm.api_key.trim(),
+      login_mode: "jwt",
+    });
+    if (data.access_token) {
+      setJwtTokens(data.access_token, data.refresh_token);
+    }
+    apiKeyForm.api_key = "";
+    await store.fetchMe();
+    ElMessage.success(t('auth.loginSuccess'));
+    router.push("/dashboard");
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || e?.message || t('common.failed'));
+  } finally {
+    loading.value = false;
+  }
 };
 </script>
 

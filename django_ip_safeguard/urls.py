@@ -23,6 +23,7 @@ from django_ip_safeguard.views import (
     logout_view,
     policy_view,
     recent_records_view,
+    security_audit_log_view,
     system_settings_view,
     two_factor_disable_view,
     two_factor_login_verify_view,
@@ -32,6 +33,7 @@ from django_ip_safeguard.views import (
     unban_ip_view,
     user_profile_view,
     user_stats_chart_view,
+    verify_email_view,
 )
 
 app_name = "django_ip_safeguard"
@@ -47,6 +49,7 @@ urlpatterns = [
     path("api/auth/me/", auth_me_view, name="auth_me_api"),
     path("api/auth/change-password/", change_password_view, name="change_password_api"),
     path("api/auth/change-email/", change_email_view, name="change_email_api"),
+    path("api/auth/verify-email/", verify_email_view, name="verify_email_api"),
     path("api/auth/profile/", user_profile_view, name="user_profile_api"),
     path("api/auth/2fa/status/", two_factor_status_view, name="two_factor_status_api"),
     path("api/auth/2fa/setup/", two_factor_setup_view, name="two_factor_setup_api"),
@@ -67,5 +70,6 @@ urlpatterns = [
     path("api/i18n/languages/", i18n_lang_list_view, name="i18n_lang_list_api"),
     path("api/i18n/switch/", i18n_lang_switch_view, name="i18n_lang_switch_api"),
     path("api/user-stats-chart/", user_stats_chart_view, name="user_stats_chart_api"),
+    path("api/security-audit-logs/", security_audit_log_view, name="security_audit_log_api"),
     path("api/system-settings/", system_settings_view, name="system_settings_api"),
 ]
