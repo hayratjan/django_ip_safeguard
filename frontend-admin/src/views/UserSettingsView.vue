@@ -216,14 +216,19 @@
 
         <el-dialog v-model="showKeyDialog" :title="t('userSettings.apiKeyCreated')" width="520px" :close-on-click-modal="false" :show-close="true" @close="onKeyDialogClose">
           <el-alert type="warning" :title="t('userSettings.apiKeyWarning')" show-icon :closable="false" style="margin-bottom: 16px" />
+          <div style="text-align: center; margin-bottom: 16px">
+            <img v-if="apiKeyQrCodeUrl" :src="apiKeyQrCodeUrl" alt="QR Code" style="border: 4px solid #fff; border-radius: 8px" />
+            <div v-if="apiKeyQrCodeUrl" style="margin-top: 8px; font-size: 12px; color: #909399">{{ t('userSettings.scanQrCode') }}</div>
+          </div>
           <el-input
             v-model="newKeyValue"
             readonly
             type="textarea"
-            :rows="3"
+            :rows="2"
+            style="font-family: monospace"
           />
           <template #footer>
-            <el-button type="primary" @click="onCopyKey">{{ t('common.copy') || 'Copy' }}</el-button>
+            <el-button type="primary" @click="onCopyKey">{{ t('common.copy') }}</el-button>
           </template>
         </el-dialog>
 
@@ -509,6 +514,7 @@ const showApiKeyLogsDialog = ref(false);
 const apiKeyLogs = ref([]);
 const apiKeyCreating = ref(false);
 const newKeyValue = ref("");
+const apiKeyQrCodeUrl = ref("");
 const apiKeyCreateForm = reactive({
   name: "",
   expires_days: 0,
@@ -540,6 +546,8 @@ async function onCreateApiKey() {
     newKeyValue.value = data.key;
     showCreateDialog.value = false;
     showKeyDialog.value = true;
+    const QRCode = (await import("qrcode")).default;
+    apiKeyQrCodeUrl.value = await QRCode.toDataURL(data.key, { width: 200, margin: 2 });
     apiKeyCreateForm.name = "";
     apiKeyCreateForm.expires_days = 0;
     apiKeyCreateForm.allowed_ips = "";
@@ -592,6 +600,7 @@ async function onCopyKey() {
 
 function onKeyDialogClose() {
   newKeyValue.value = "";
+  apiKeyQrCodeUrl.value = "";
 }
 
 async function onCopyRecoveryCodes() {

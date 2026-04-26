@@ -232,8 +232,8 @@ const loadTasks = async () => {
     if (filters.enabled) params.enabled = filters.enabled;
 
     const res = await getScheduledTaskListApi(params);
-    tasks.value = res.data.items || [];
-    pagination.total = res.data.pagination?.total || 0;
+    tasks.value = res.items || [];
+    pagination.total = res.pagination?.total || 0;
   } catch (err) {
     ElMessage.error(err.message || t("common.loadFailed"));
   } finally {

@@ -111,8 +111,8 @@ async function fetchLogs() {
       params.end_time = dateRange.value[1];
     }
     const res = await getSecurityAuditLogsApi(params);
-    logs.value = res.data.results || res.data.items || [];
-    total.value = res.data.total || logs.value.length;
+    logs.value = res.results || res.items || [];
+    total.value = res.total || logs.value.length;
   } catch (e) {
     console.error('Failed to fetch audit logs:', e);
   } finally {

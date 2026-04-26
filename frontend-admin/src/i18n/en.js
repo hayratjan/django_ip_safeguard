@@ -307,6 +307,7 @@ export default {
     revokeApiKey: "Revoke",
     revokeConfirm: "Are you sure you want to revoke this key? This cannot be undone.",
     apiKeyCreated: "Key created successfully, please copy it now",
+    scanQrCode: "Scan to copy key, then paste to password manager",
     apiKeyCopySuccess: "Key copied to clipboard",
     apiKeyCopyFailed: "Copy failed, please copy manually",
     apiKeyRevoked: "Key revoked",

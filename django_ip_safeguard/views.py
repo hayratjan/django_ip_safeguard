@@ -1529,7 +1529,7 @@ def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
 
     hourly_pattern = list(
         IpAccessLog.objects.filter(created_at__gte=since)
-        .extra(select={"hour": "EXTRACT(HOUR FROM created_at)"})
+        .annotate(hour=TruncHour("created_at"))
         .values("hour")
         .annotate(
             total=Count("id"),
@@ -1537,6 +1537,9 @@ def user_stats_chart_view(request: HttpRequest) -> JsonResponse:
         )
         .order_by("hour")
     )
+    for row in hourly_pattern:
+        if row.get("hour"):
+            row["hour"] = row["hour"].strftime("%H:00")
 
     result = {
         "daily_stats": daily_stats,

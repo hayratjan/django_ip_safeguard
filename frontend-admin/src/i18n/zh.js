@@ -307,6 +307,7 @@ export default {
     revokeApiKey: "吊销",
     revokeConfirm: "确定要吊销此密钥？吊销后无法恢复。",
     apiKeyCreated: "密钥创建成功，请立即复制保存",
+    scanQrCode: "扫码后复制密钥，再粘贴到密码管理器保存",
     apiKeyCopySuccess: "密钥已复制到剪贴板",
     apiKeyCopyFailed: "复制失败，请手动复制",
     apiKeyRevoked: "密钥已吊销",

@@ -4,6 +4,8 @@ from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
 
 from django_ip_safeguard.conf import get_settings
+
+_t = _
 from django_ip_safeguard.services.audit_service import log_access_decision
 from django_ip_safeguard.services.ban_service import ban_ip
 from django_ip_safeguard.services.cache import RedisCacheService
@@ -128,7 +130,7 @@ class IpGuardMiddleware:
             )
             return JsonResponse(
                 {
-                    "detail": str(_("访问被安全策略阻止")),
+                    "detail": str(_t("访问被安全策略阻止")),
                     "reason": str(reason),
                     "ip": client_ip,
                 },
@@ -149,7 +151,7 @@ class IpGuardMiddleware:
             )
             return JsonResponse(
                 {
-                    "detail": str(_("访问被安全策略阻止")),
+                    "detail": str(_t("访问被安全策略阻止")),
                     "reason": geo_reason,
                     "ip": client_ip,
                 },
@@ -157,7 +159,7 @@ class IpGuardMiddleware:
             )
 
         if self._is_rate_limited(client_ip, runtime_config.rate_limit_per_minute):
-            reason = str(_("超过单 IP 每分钟请求上限"))
+            reason = str(_t("超过单 IP 每分钟请求上限"))
             log_access_decision(
                 enabled=runtime_config.use_db_log,
                 ip=client_ip,
@@ -170,7 +172,7 @@ class IpGuardMiddleware:
             )
             return JsonResponse(
                 {
-                    "detail": str(_("访问被安全策略阻止")),
+                    "detail": str(_t("访问被安全策略阻止")),
                     "reason": reason,
                     "ip": client_ip,
                 },
@@ -179,7 +181,7 @@ class IpGuardMiddleware:
 
         if self._is_banned(client_ip):
             return JsonResponse(
-                {"detail": str(_("IP 已被封禁")), "ip": client_ip},
+                {"detail": str(_t("IP 已被封禁")), "ip": client_ip},
                 status=runtime_config.block_status_code,
             )
 
@@ -247,7 +249,7 @@ class IpGuardMiddleware:
             if self.ip_correlation:
                 self.ip_correlation.record_access(client_ip, is_blocked=True)
             return JsonResponse(
-                {"detail": str(_("访问被安全策略阻止")), "reason": decision.reason, "ip": client_ip},
+                {"detail": str(_t("访问被安全策略阻止")), "reason": decision.reason, "ip": client_ip},
                 status=runtime_config.block_status_code,
             )
 
@@ -275,6 +277,6 @@ class IpGuardMiddleware:
         if fail_open_now:
             return self.get_response(request)
         return JsonResponse(
-            {"detail": str(_("IP 风险服务暂不可用"))},
+            {"detail": str(_t("IP 风险服务暂不可用"))},
             status=runtime_config.block_status_code,
         )

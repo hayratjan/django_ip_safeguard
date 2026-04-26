@@ -9,6 +9,8 @@ from django_ip_safeguard.models import (
     IpGeoPoolStatus,
     IpGuardPolicy,
     IpReputationHistory,
+    ScheduledTask,
+    TaskExecutionLog,
     ThreatIntelFeedStatus,
     UserProfile,
 )
@@ -140,4 +142,31 @@ class ApiKeyUsageLogAdmin(ModelAdmin):
     readonly_fields = ("api_key", "user", "ip", "user_agent", "action", "success", "failure_reason", "created_at")
 
     def has_add_permission(self, request):
+        return False
+
+
+@admin.register(ScheduledTask)
+class ScheduledTaskAdmin(ModelAdmin):
+    list_display = ("name", "task_type", "cron_preset", "interval_minutes", "enabled", "last_run_at", "last_run_status", "next_run_at")
+    search_fields = ("name", "description")
+    list_filter = ("enabled", "task_type", "cron_preset")
+    list_filter_submit = True
+    readonly_fields = ("last_run_at", "last_run_status", "last_run_output", "next_run_at", "run_count", "success_count", "failure_count", "created_at", "updated_at")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TaskExecutionLog)
+class TaskExecutionLogAdmin(ModelAdmin):
+    list_display = ("task", "status", "started_at", "duration_ms")
+    search_fields = ("task__name", "error")
+    list_filter = ("status", "started_at")
+    list_filter_submit = True
+    readonly_fields = ("task", "status", "started_at", "completed_at", "duration_ms", "output", "error")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False
