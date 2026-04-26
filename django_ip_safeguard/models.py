@@ -324,3 +324,200 @@ class ThreatIntelFeedStatus(models.Model):
     class Meta:
         verbose_name = _("威胁情报源状态")
         verbose_name_plural = _("威胁情报源状态")
+
+
+class ScheduledTask(models.Model):
+    """用户可配置的定时任务模型。"""
+
+    TASK_TYPES = [
+        ("geoip2_update", _("GeoIP2 数据库更新")),
+        ("threat_intel_sync", _("威胁情报同步")),
+        ("ip_reputation_snapshot", _("IP 信誉快照")),
+        ("geo_pool_sync", _("地理IP池同步")),
+        ("custom", _("自定义命令")),
+    ]
+
+    CRON_CHOICES = [
+        ("@hourly", _("每小时")),
+        ("@daily", _("每天")),
+        ("@weekly", _("每周")),
+        ("@monthly", _("每月")),
+        ("custom", _("自定义")),
+    ]
+
+    name = models.CharField(_("任务名称"), max_length=64, unique=True)
+    task_type = models.CharField(
+        _("任务类型"), max_length=32, choices=TASK_TYPES, default="custom"
+    )
+    command = models.CharField(
+        _("自定义命令"), max_length=255, blank=True,
+        help_text=_("自定义管理命令，如 update_geoip2_db --force"),
+    )
+    cron_expression = models.CharField(
+        _("Cron 表达式"), max_length=64, blank=True,
+        help_text=_("自定义 Cron 表达式，如 0 3 * * 1（每周一凌晨3点）"),
+    )
+    cron_preset = models.CharField(
+        _("Cron 预设"), max_length=16, choices=CRON_CHOICES, default="@daily",
+    )
+    interval_minutes = models.PositiveIntegerField(
+        _("执行间隔(分钟)"), default=0,
+        help_text=_("0 表示使用 Cron 预设或自定义表达式"),
+    )
+    enabled = models.BooleanField(_("是否启用"), default=True)
+    description = models.TextField(_("任务描述"), blank=True, default="")
+
+    last_run_at = models.DateTimeField(_("上次执行时间"), null=True, blank=True)
+    last_run_status = models.CharField(_("上次执行状态"), max_length=16, blank=True, default="")
+    last_run_output = models.TextField(_("上次执行输出"), blank=True, default="")
+    next_run_at = models.DateTimeField(_("下次执行时间"), null=True, blank=True)
+
+    run_count = models.PositiveIntegerField(_("累计执行次数"), default=0)
+    success_count = models.PositiveIntegerField(_("成功次数"), default=0)
+    failure_count = models.PositiveIntegerField(_("失败次数"), default=0)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="created_scheduled_tasks",
+        verbose_name=_("创建人"),
+    )
+    created_at = models.DateTimeField(_("创建时间"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("更新时间"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("定时任务")
+        verbose_name_plural = _("定时任务")
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_task_type_display()})"
+
+    def get_schedule_display(self) -> str:
+        if self.interval_minutes > 0:
+            return f"{_('每隔')} {self.interval_minutes} {_('分钟')}"
+        if self.cron_preset == "custom":
+            if self.cron_expression:
+                return f"Cron: {self.cron_expression}"
+            return _("未配置")
+        return self.get_cron_preset_display()
+
+    def calculate_next_run(self):
+        from datetime import timedelta
+        from croniter import croniter
+        now = timezone.now()
+
+        if self.interval_minutes > 0:
+            if self.last_run_at:
+                return self.last_run_at + timedelta(minutes=self.interval_minutes)
+            return now
+
+        preset_map = {
+            "@hourly": "0 * * * *",
+            "@daily": "0 0 * * *",
+            "@weekly": "0 0 * * 0",
+            "@monthly": "0 0 1 * *",
+        }
+
+        if self.cron_preset == "custom" and self.cron_expression:
+            try:
+                cron = croniter(self.cron_expression, now)
+                return cron.get_next(type(now))
+            except (ValueError, KeyError):
+                pass
+        elif self.cron_preset in preset_map:
+            try:
+                cron = croniter(preset_map[self.cron_preset], now)
+                return cron.get_next(type(now))
+            except (ValueError, KeyError):
+                pass
+
+        return None
+
+    def execute(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        result = {
+            "task": self.name,
+            "started_at": timezone.now().isoformat(),
+            "status": "unknown",
+            "output": "",
+            "error": "",
+        }
+
+        try:
+            output = StringIO()
+            command_map = {
+                "geoip2_update": "update_geoip2_db",
+                "threat_intel_sync": "sync_threat_intel",
+                "ip_reputation_snapshot": "snapshot_ip_reputation",
+                "geo_pool_sync": "sync_geo_ip_pools",
+                "download_geoip2_db": "download_geoip2_db",
+            }
+
+            cmd_name = command_map.get(self.task_type, self.task_type)
+
+            if self.task_type == "custom" and self.command:
+                parts = self.command.strip().split()
+                cmd_name = parts[0] if parts else cmd_name
+                args = parts[1:] if len(parts) > 1 else []
+            else:
+                args = []
+
+            call_command(cmd_name, *args, stdout=output, stderr=output)
+            result["status"] = "success"
+            result["output"] = output.getvalue()
+
+        except Exception as exc:
+            result["status"] = "error"
+            result["error"] = str(exc)
+
+        result["completed_at"] = timezone.now().isoformat()
+        self._update_execution_result(result)
+        return result
+
+    def _update_execution_result(self, result):
+        self.last_run_at = timezone.now()
+        self.last_run_status = result["status"]
+        self.last_run_output = (result.get("output", "") + "\n" + result.get("error", ""))[:2000]
+        self.run_count += 1
+
+        if result["status"] == "success":
+            self.success_count += 1
+        else:
+            self.failure_count += 1
+
+        self.next_run_at = self.calculate_next_run()
+        self.save(update_fields=[
+            "last_run_at", "last_run_status", "last_run_output",
+            "run_count", "success_count", "failure_count", "next_run_at", "updated_at",
+        ])
+
+
+class TaskExecutionLog(models.Model):
+    """定时任务执行日志。"""
+
+    task = models.ForeignKey(
+        ScheduledTask,
+        on_delete=models.CASCADE,
+        related_name="execution_logs",
+        verbose_name=_("定时任务"),
+    )
+    status = models.CharField(_("执行状态"), max_length=16)
+    started_at = models.DateTimeField(_("开始时间"), auto_now_add=True)
+    completed_at = models.DateTimeField(_("完成时间"), null=True, blank=True)
+    duration_ms = models.PositiveIntegerField(_("执行耗时(毫秒)"), default=0)
+    output = models.TextField(_("执行输出"), blank=True, default="")
+    error = models.TextField(_("错误信息"), blank=True, default="")
+
+    class Meta:
+        verbose_name = _("任务执行日志")
+        verbose_name_plural = _("任务执行日志")
+        ordering = ["-started_at"]
+        indexes = [
+            models.Index(fields=["task", "-started_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.task.name} @ {self.started_at.strftime('%Y-%m-%d %H:%M')}"

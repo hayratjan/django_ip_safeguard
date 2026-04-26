@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_celery_beat',
     'django_ip_safeguard',
 ]
 
@@ -170,3 +171,16 @@ IP_GUARD_RESEND_API_KEY = "REMOVED_RESEND_KEY"
 IP_GUARD_EMAIL_FROM = "IP Guard <onboarding@resend.dev>"
 IP_GUARD_FRONTEND_BASE_URL = "http://localhost:5173"
 IP_GUARD_PASSWORD_MAX_AGE_DAYS = 0
+
+# Celery 配置
+CELERY_BROKER_URL = "redis://127.0.0.1:6380/1"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6380/1"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60
+
+# django-celery-beat 配置
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
