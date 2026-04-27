@@ -257,9 +257,14 @@ def _get_days_param(request: HttpRequest, default: int = 7, max_days: int = 30) 
     return max(1, min(max_days, days))
 
 
-@staff_member_required
 @require_GET
 def dashboard_page_view(request: HttpRequest) -> HttpResponse:
+    if not request.user.is_authenticated:
+        from django.shortcuts import redirect
+        return redirect("/ip-guard/admin-frontend/")
+    if not request.user.is_staff:
+        from django.shortcuts import HttpResponseForbidden
+        return HttpResponseForbidden(_("需要 Staff 权限"))
     html = """
     <html>
       <head><title>IP Guard Dashboard</title></head>
