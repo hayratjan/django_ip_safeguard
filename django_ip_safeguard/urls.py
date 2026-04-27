@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, re_path
 
 from django_ip_safeguard.views import (
     access_log_export_view,
@@ -43,6 +43,7 @@ from django_ip_safeguard.views import (
     user_stats_chart_view,
     verify_email_view,
 )
+from django_ip_safeguard.contrib.admin_frontend.views import FrontendIndexView, serve_frontend_assets
 
 app_name = "django_ip_safeguard"
 
@@ -88,4 +89,6 @@ urlpatterns = [
     path("api/scheduled-tasks/", scheduled_task_list_view, name="scheduled_task_list_api"),
     path("api/scheduled-tasks/<int:task_id>/", scheduled_task_detail_view, name="scheduled_task_detail_api"),
     path("api/scheduled-tasks/<int:task_id>/run/", scheduled_task_run_view, name="scheduled_task_run_api"),
+    re_path(r"^admin-frontend/(?P<path>assets/.*)$", serve_frontend_assets, name="admin_frontend_assets"),
+    path("admin-frontend/", serve_frontend_assets, name="admin_frontend_index"),
 ]
