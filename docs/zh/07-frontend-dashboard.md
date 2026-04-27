@@ -2,7 +2,7 @@
 
 ## 概述
 
-Django IP Safeguard 包含一个基于 Vue.js 的管理仪表盘，可通过 `/ip-guard/admin-frontend/` 访问。
+Django IP Safeguard 包含一个基于 Vue.js 的管理仪表盘，入口为 **`/ip-guard/`**（与 `path('ip-guard/', include(...))` 对应）。
 
 ## 功能
 
@@ -42,6 +42,19 @@ Django IP Safeguard 包含一个基于 Vue.js 的管理仪表盘，可通过 `/i
 - **2FA 设置**：启用双因素认证
 - **个人资料**：更新邮箱、修改密码
 
+### 系统用户管理（Django 账号）
+
+Vue 控制台中的「**用户设置**」仅管理**当前登录用户**本人（资料、密码、2FA、API 密钥等）。对 **Django 系统用户**（增删改其他账号、分配组、Staff/Superuser 等）请使用以下方式之一：
+
+1. **Django Admin（推荐）**  
+   使用具备权限的账号访问 **`/admin/auth/user/`**（或先打开 **`/admin/`** 再进入「用户」）。需已为该账号分配 `auth` 应用下相应权限（如查看/新增/修改用户），超级用户拥有全部权限。
+
+2. **控制台内嵌入口**  
+   若当前账号为超级用户或拥有 `auth.view_user`，侧栏会显示「**系统用户管理**」，可在 Vue 内分页查看与编辑用户；亦可从该页跳转至 Admin 做更复杂操作。
+
+3. **控制台内置 API**  
+   插件提供 `GET/POST /ip-guard/api/admin/users/` 与 `PATCH /ip-guard/api/admin/users/<id>/`（权限与 Django `auth` 权限一致），由上述「系统用户管理」页面调用。
+
 ### 系统设置
 
 配置系统选项：
@@ -51,7 +64,7 @@ Django IP Safeguard 包含一个基于 Vue.js 的管理仪表盘，可通过 `/i
 
 ## 登录
 
-1. 访问 `/ip-guard/admin-frontend/`
+1. 访问 `/ip-guard/`（或带 Vue 子路径，如 `/ip-guard/login`）
 2. 输入用户名和密码
 3. 如果启用，完成 2FA 验证
 4. 进入仪表盘
@@ -77,6 +90,11 @@ Django IP Safeguard 包含一个基于 Vue.js 的管理仪表盘，可通过 `/i
 | `Ctrl+K` | 打开命令面板 |
 | `Esc` | 关闭弹窗/对话框 |
 | `Enter` | 确认操作 |
+
+## 常见问题
+
+- **打开 `/ip-guard/` 却触发下载 `index.html`**：说明响应头里 `Content-Type` 不是 `text/html`（旧版本对 `.html` 误用了 `application/octet-stream`）。请使用当前包版本；入口页必须由服务端声明 `text/html` 浏览器才会渲染 Vue 应用。
+- **页面空白、仅见 `#app` 空壳**：请确认前端构建的 `vite.config.js` 中 `base` 为 `/ip-guard/`，且路由使用 `createWebHistory(import.meta.env.BASE_URL)`，与 Django 挂载路径一致。
 
 ## 移动端支持
 

@@ -65,7 +65,7 @@ python manage.py createsuperuser
 python manage.py runserver 8000
 ```
 
-Visit `http://localhost:8000/ip-guard/admin-frontend/` to access the admin dashboard.
+Visit `http://localhost:8000/ip-guard/` to access the admin dashboard.
 
 ## Next Steps
 

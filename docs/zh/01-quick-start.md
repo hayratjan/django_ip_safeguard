@@ -65,7 +65,7 @@ python manage.py createsuperuser
 python manage.py runserver 8000
 ```
 
-访问 `http://localhost:8000/ip-guard/admin-frontend/` 进入管理仪表盘。
+访问 `http://localhost:8000/ip-guard/` 进入管理仪表盘。
 
 ## 下一步
 

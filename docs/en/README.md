@@ -116,7 +116,7 @@ python manage.py build_frontend
 python manage.py runserver 8000
 ```
 
-Visit `http://localhost:8000/ip-guard/admin-frontend/` for the admin dashboard.
+Visit `http://localhost:8000/ip-guard/` for the admin dashboard.
 
 ## Configuration
 
@@ -281,7 +281,7 @@ The package includes a Vue.js-based admin dashboard with:
 - **User Settings**: API key management, 2FA setup
 - **System Settings**: Configure system options
 
-Access the dashboard at `/ip-guard/admin-frontend/`
+Access the dashboard at `/ip-guard/`
 
 ## Database Models
 

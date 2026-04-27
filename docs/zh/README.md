@@ -114,7 +114,7 @@ python manage.py build_frontend
 python manage.py runserver 8000
 ```
 
-访问 `http://localhost:8000/ip-guard/admin-frontend/` 进入管理仪表盘。
+访问 `http://localhost:8000/ip-guard/` 进入管理仪表盘。
 
 ## 配置
 
@@ -260,7 +260,7 @@ python manage.py snapshot_ip_reputation
 - **用户设置**：API 密钥管理、2FA 设置
 - **系统设置**：配置系统选项
 
-访问 `/ip-guard/admin-frontend/`
+访问 `/ip-guard/`
 
 ## 数据库模型
 
