@@ -13,7 +13,7 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
-  base: "/ip-guard/admin-frontend/",
+  base: "/ip-guard/",
   build: {
     outDir: staticFilesDir,
     emptyOutDir: true,

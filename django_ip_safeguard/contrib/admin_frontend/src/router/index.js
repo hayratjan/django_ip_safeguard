@@ -19,13 +19,15 @@ const routes = [
       { path: "system-settings", component: defineAsyncComponent(() => import("../views/SystemSettingsView.vue")), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
       { path: "scheduled-tasks", component: defineAsyncComponent(() => import("../views/ScheduledTasksView.vue")), meta: { perm: "django_ip_safeguard.view_scheduledtask" } },
       { path: "security-audit", component: defineAsyncComponent(() => import("../views/SecurityAuditView.vue")), meta: { perm: "django_ip_safeguard.view_ipguardpolicy" } },
+      { path: "system-users", component: () => import("../views/SystemUsersView.vue"), meta: { perm: "auth.view_user" } },
     ],
   },
   { path: "/verify-email", component: () => import("../views/VerifyEmailView.vue"), meta: { public: true } },
 ];
 
 const router = createRouter({
-  history: createWebHistory(),
+  // 与 vite.config base 一致，否则部署在 /ip-guard/ 下会出现空白页
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 });
 
@@ -40,7 +42,7 @@ router.beforeEach(async (to) => {
   if (!store.user) {
     return "/login";
   }
-  const fallbackRoutes = ["/dashboard", "/policy", "/ban", "/logs", "/health", "/user-settings"];
+  const fallbackRoutes = ["/dashboard", "/policy", "/ban", "/logs", "/health", "/user-settings", "/system-users"];
   const firstAllowed = fallbackRoutes.find((path) => {
     const route = routes[1].children.find((r) => `/${r.path}` === path);
     if (!route?.meta?.perm) return true;
