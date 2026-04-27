@@ -115,6 +115,22 @@ MIDDLEWARE = [
 ]
 ```
 
+If you use **django-unfold**, place `unfold` and `unfold.contrib.filters` **before** `django.contrib.admin` in `INSTALLED_APPS` (same as the `demo2` sample in this repository).
+
+#### Optional: nested `IP_GUARD` dict
+
+Besides flat `IP_GUARD_*` variables, you may set a **`IP_GUARD = { ... }`** dict in `settings.py` (common in minimal demos). Merge order: **nested dict first, then flat keys override** when the flat equivalent is set. Supported nested keys include:
+
+| Nested key | Meaning | Flat override (if set) |
+|------------|---------|-------------------------|
+| `ENABLED` | Plugin enabled | `IP_GUARD_ENABLED` |
+| `WHITELIST_IPS` / `IP_WHITELIST` | IP allowlist | `IP_GUARD_IP_WHITELIST` |
+| `REDIS_URL` | Redis URL | `IP_GUARD_REDIS_URL` |
+| `JWT.SECRET_KEY` | JWT signing secret | `IP_GUARD_JWT_SECRET_KEY` |
+| `JWT.ACCESS_TOKEN_LIFETIME_MINUTES` | Access token lifetime (minutes) | `IP_GUARD_JWT_ACCESS_TTL` (seconds) |
+| `JWT.REFRESH_TOKEN_LIFETIME_DAYS` | Refresh token lifetime (days) | `IP_GUARD_JWT_REFRESH_TTL` (seconds) |
+| `CACHE.ENABLED` | L1 in-process cache on/off | `IP_GUARD_L1_CACHE_ENABLED` |
+
 ### 5. Configure URLs
 
 Edit `myproject/urls.py`:
@@ -153,7 +169,7 @@ python manage.py build_frontend
 python manage.py runserver 8000
 ```
 
-Visit `http://localhost:8000/ip-guard/admin-frontend/`
+Visit `http://localhost:8000/ip-guard/`
 
 ## Production Setup
 

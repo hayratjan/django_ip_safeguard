@@ -107,20 +107,86 @@ def _to_str_tuple(value: Optional[object]) -> Tuple[str, ...]:
     return (str(value).strip(),)
 
 
-def _read_jwt_secret_key() -> str:
-    return str(
-        getattr(
-            settings,
-            "IP_GUARD_JWT_SECRET_KEY",
-            os.getenv("IP_GUARD_JWT_SECRET_KEY", ""),
-        )
-    ).strip()
+def _nested_ip_guard_overrides() -> dict:
+    """
+    读取可选的 settings.IP_GUARD 嵌套字典（如 demo2 精简写法）。
+    与扁平 IP_GUARD_* 合并规则：先取嵌套中的值，再在 get_settings 内用扁平项覆盖（扁平优先）。
+    """
+    raw = getattr(settings, "IP_GUARD", None)
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    if "ENABLED" in raw:
+        out["enabled"] = bool(raw["ENABLED"])
+    wl = raw.get("WHITELIST_IPS")
+    if wl is None:
+        wl = raw.get("IP_WHITELIST")
+    if wl is not None:
+        out["ip_whitelist"] = _to_str_tuple(wl)
+    jwt = raw.get("JWT")
+    if isinstance(jwt, dict):
+        sk = str(jwt.get("SECRET_KEY", "") or "").strip()
+        if sk:
+            out["jwt_secret_key"] = sk
+        if "ACCESS_TOKEN_LIFETIME_MINUTES" in jwt:
+            try:
+                out["jwt_access_token_ttl_seconds"] = int(jwt["ACCESS_TOKEN_LIFETIME_MINUTES"]) * 60
+            except (TypeError, ValueError):
+                pass
+        if "REFRESH_TOKEN_LIFETIME_DAYS" in jwt:
+            try:
+                out["jwt_refresh_token_ttl_seconds"] = int(jwt["REFRESH_TOKEN_LIFETIME_DAYS"]) * 86400
+            except (TypeError, ValueError):
+                pass
+    cache = raw.get("CACHE")
+    if isinstance(cache, dict) and "ENABLED" in cache:
+        out["l1_cache_enabled"] = bool(cache.get("ENABLED"))
+    if "REDIS_URL" in raw:
+        out["redis_url"] = str(raw["REDIS_URL"] or "").strip()
+    return out
 
 
 def get_settings() -> IpGuardSettings:
+    _nested = _nested_ip_guard_overrides()
+
+    # 嵌套优先写入基准，再由扁平 IP_GUARD_* 覆盖（与仅写 IP_GUARD 的 demo 项目一致）
+    enabled = bool(_nested.get("enabled", True))
+    if hasattr(settings, "IP_GUARD_ENABLED"):
+        enabled = bool(settings.IP_GUARD_ENABLED)
+
+    redis_url = str(_nested.get("redis_url") or "redis://127.0.0.1:6379/0")
+    if hasattr(settings, "IP_GUARD_REDIS_URL"):
+        redis_url = str(settings.IP_GUARD_REDIS_URL).strip()
+
+    ip_whitelist_val = _nested.get("ip_whitelist")
+    if ip_whitelist_val is None:
+        ip_whitelist_val = ()
+    if hasattr(settings, "IP_GUARD_IP_WHITELIST"):
+        ip_whitelist_val = getattr(settings, "IP_GUARD_IP_WHITELIST")
+
+    jwt_secret = str(_nested.get("jwt_secret_key") or "").strip()
+    if hasattr(settings, "IP_GUARD_JWT_SECRET_KEY"):
+        jf = str(getattr(settings, "IP_GUARD_JWT_SECRET_KEY") or "").strip()
+        if jf:
+            jwt_secret = jf
+    if not jwt_secret:
+        jwt_secret = str(os.getenv("IP_GUARD_JWT_SECRET_KEY", "") or "").strip()
+
+    jwt_access = int(_nested.get("jwt_access_token_ttl_seconds", 7200))
+    if hasattr(settings, "IP_GUARD_JWT_ACCESS_TTL"):
+        jwt_access = int(settings.IP_GUARD_JWT_ACCESS_TTL)
+
+    jwt_refresh = int(_nested.get("jwt_refresh_token_ttl_seconds", 604800))
+    if hasattr(settings, "IP_GUARD_JWT_REFRESH_TTL"):
+        jwt_refresh = int(settings.IP_GUARD_JWT_REFRESH_TTL)
+
+    l1_cache_enabled = bool(_nested.get("l1_cache_enabled", True))
+    if hasattr(settings, "IP_GUARD_L1_CACHE_ENABLED"):
+        l1_cache_enabled = bool(settings.IP_GUARD_L1_CACHE_ENABLED)
+
     return IpGuardSettings(
-        enabled=getattr(settings, "IP_GUARD_ENABLED", True),
-        redis_url=getattr(settings, "IP_GUARD_REDIS_URL", "redis://127.0.0.1:6379/0"),
+        enabled=enabled,
+        redis_url=redis_url,
         cache_ttl=getattr(settings, "IP_GUARD_CACHE_TTL", 3600),
         ban_ttl=getattr(settings, "IP_GUARD_BAN_TTL", 86400),
         provider=getattr(settings, "IP_GUARD_PROVIDER", "dummy"),
@@ -138,7 +204,7 @@ def get_settings() -> IpGuardSettings:
         blocked_countries=_to_tuple(getattr(settings, "IP_GUARD_BLOCKED_COUNTRIES", ())),
         allowed_countries=_to_tuple(getattr(settings, "IP_GUARD_ALLOWED_COUNTRIES", ())),
         blocked_risk_tags=_to_tuple(getattr(settings, "IP_GUARD_BLOCKED_RISK_TAGS", ("tor", "proxy", "vpn"))),
-        ip_whitelist=_to_str_tuple(getattr(settings, "IP_GUARD_IP_WHITELIST", ())),
+        ip_whitelist=_to_str_tuple(ip_whitelist_val),
         ip_blacklist=_to_str_tuple(getattr(settings, "IP_GUARD_IP_BLACKLIST", ())),
         rate_limit_per_minute=int(getattr(settings, "IP_GUARD_RATE_LIMIT_PER_MINUTE", 0)),
         fail_open=getattr(settings, "IP_GUARD_FAIL_OPEN", True),
@@ -163,10 +229,10 @@ def get_settings() -> IpGuardSettings:
         low_risk_cache_ttl=int(getattr(settings, "IP_GUARD_LOW_RISK_CACHE_TTL", 1800)),
         dedupe_lock_seconds=int(getattr(settings, "IP_GUARD_DEDUPE_LOCK_SECONDS", 3)),
         admin_url_prefix=str(getattr(settings, "IP_GUARD_ADMIN_URL_PREFIX", "ip-guard")).strip("/"),
-        jwt_secret_key=_read_jwt_secret_key(),
+        jwt_secret_key=jwt_secret,
         jwt_algorithm=str(getattr(settings, "IP_GUARD_JWT_ALGORITHM", "HS256")),
-        jwt_access_token_ttl_seconds=int(getattr(settings, "IP_GUARD_JWT_ACCESS_TTL", 7200)),
-        jwt_refresh_token_ttl_seconds=int(getattr(settings, "IP_GUARD_JWT_REFRESH_TTL", 604800)),
+        jwt_access_token_ttl_seconds=jwt_access,
+        jwt_refresh_token_ttl_seconds=jwt_refresh,
         china_pool_rule=str(getattr(settings, "IP_GUARD_CHINA_POOL_RULE", "off")).strip().lower()
         or "off",
         international_pool_rule=str(
@@ -197,7 +263,7 @@ def get_settings() -> IpGuardSettings:
         provider_chain_names=_to_str_tuple(
             getattr(settings, "IP_GUARD_PROVIDER_CHAIN_NAMES", ())
         ),
-        l1_cache_enabled=bool(getattr(settings, "IP_GUARD_L1_CACHE_ENABLED", True)),
+        l1_cache_enabled=l1_cache_enabled,
         l1_cache_ttl=float(getattr(settings, "IP_GUARD_L1_CACHE_TTL", 10.0)),
         l1_cache_max_size=int(getattr(settings, "IP_GUARD_L1_CACHE_MAX_SIZE", 10000)),
         local_risk_engine_enabled=bool(getattr(settings, "IP_GUARD_LOCAL_RISK_ENGINE_ENABLED", True)),

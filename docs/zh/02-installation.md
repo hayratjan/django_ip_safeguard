@@ -112,6 +112,22 @@ MIDDLEWARE = [
 ]
 ```
 
+使用 **django-unfold** 时，建议将 `unfold` 及 `unfold.contrib.filters` 写在 `django.contrib.admin` 之前（与仓库内 `demo2` 示例一致）。
+
+#### 可选：`IP_GUARD` 嵌套字典
+
+除扁平变量 `IP_GUARD_*` 外，支持在 `settings.py` 中配置 **`IP_GUARD = { ... }`** 字典（精简 demo 常用）。合并规则为：**先读嵌套字典，再由同含义的扁平项覆盖**。支持的键包括：
+
+| 嵌套键 | 含义 | 对应扁平项（若设置则覆盖嵌套） |
+|--------|------|----------------------------------|
+| `ENABLED` | 是否启用中间件等 | `IP_GUARD_ENABLED` |
+| `WHITELIST_IPS` / `IP_WHITELIST` | IP 白名单 | `IP_GUARD_IP_WHITELIST` |
+| `REDIS_URL` | Redis 连接串 | `IP_GUARD_REDIS_URL` |
+| `JWT.SECRET_KEY` | JWT 签名密钥 | `IP_GUARD_JWT_SECRET_KEY` |
+| `JWT.ACCESS_TOKEN_LIFETIME_MINUTES` | 访问令牌有效期（分钟） | `IP_GUARD_JWT_ACCESS_TTL`（秒） |
+| `JWT.REFRESH_TOKEN_LIFETIME_DAYS` | 刷新令牌有效期（天） | `IP_GUARD_JWT_REFRESH_TTL`（秒） |
+| `CACHE.ENABLED` | 是否启用 L1 内存缓存 | `IP_GUARD_L1_CACHE_ENABLED` |
+
 ### 5. 配置 URLs
 
 编辑 `myproject/urls.py`：
@@ -150,7 +166,7 @@ python manage.py build_frontend
 python manage.py runserver 8000
 ```
 
-访问 `http://localhost:8000/ip-guard/admin-frontend/`
+访问 `http://localhost:8000/ip-guard/`
 
 ## 生产环境配置
 
