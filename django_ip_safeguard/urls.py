@@ -15,7 +15,6 @@ from django_ip_safeguard.views import (
     ban_ip_view,
     ban_list_view,
     dashboard_api_view,
-    dashboard_page_view,
     geo_pools_status_view,
     geo_pools_sync_view,
     health_view,
@@ -31,6 +30,9 @@ from django_ip_safeguard.views import (
     scheduled_task_detail_view,
     scheduled_task_list_view,
     scheduled_task_run_view,
+    django_admin_group_list_view,
+    django_admin_user_detail_view,
+    django_admin_users_collection_view,
     security_audit_log_view,
     system_settings_view,
     two_factor_disable_view,
@@ -43,12 +45,11 @@ from django_ip_safeguard.views import (
     user_stats_chart_view,
     verify_email_view,
 )
-from django_ip_safeguard.contrib.admin_frontend.views import FrontendIndexView, serve_frontend_assets
+from django_ip_safeguard.contrib.admin_frontend.views import serve_frontend_build_file, serve_frontend_spa
 
 app_name = "django_ip_safeguard"
 
 urlpatterns = [
-    path("", dashboard_page_view, name="dashboard"),
     path("api/auth/csrf/", csrf_view, name="auth_csrf_api"),
     path("api/auth/login/", login_view, name="auth_login_api"),
     path("api/auth/jwt/login/", jwt_login_view, name="auth_jwt_login_api"),
@@ -89,6 +90,11 @@ urlpatterns = [
     path("api/scheduled-tasks/", scheduled_task_list_view, name="scheduled_task_list_api"),
     path("api/scheduled-tasks/<int:task_id>/", scheduled_task_detail_view, name="scheduled_task_detail_api"),
     path("api/scheduled-tasks/<int:task_id>/run/", scheduled_task_run_view, name="scheduled_task_run_api"),
-    re_path(r"^admin-frontend/(?P<path>assets/.*)$", serve_frontend_assets, name="admin_frontend_assets"),
-    path("admin-frontend/", serve_frontend_assets, name="admin_frontend_index"),
+    path("api/admin/groups/", django_admin_group_list_view, name="django_admin_group_list_api"),
+    path("api/admin/users/", django_admin_users_collection_view, name="django_admin_users_collection_api"),
+    path("api/admin/users/<int:user_id>/", django_admin_user_detail_view, name="django_admin_user_detail_api"),
+    # Vue 构建产物与 SPA（须在 api/ 之后，避免吞掉接口路由）
+    re_path(r"^assets/(?P<path>.+)$", serve_frontend_build_file, name="admin_frontend_assets"),
+    path("", serve_frontend_spa, name="dashboard"),
+    re_path(r"^(?!api/)(?!assets/).+$", serve_frontend_spa, name="admin_frontend_spa"),
 ]

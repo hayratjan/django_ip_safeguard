@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import Group, User
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncHour
@@ -255,45 +256,6 @@ def _get_days_param(request: HttpRequest, default: int = 7, max_days: int = 30) 
     except (TypeError, ValueError):
         days = default
     return max(1, min(max_days, days))
-
-
-@require_GET
-def dashboard_page_view(request: HttpRequest) -> HttpResponse:
-    if not request.user.is_authenticated:
-        from django.shortcuts import redirect
-        return redirect("/ip-guard/admin-frontend/")
-    if not request.user.is_staff:
-        from django.shortcuts import HttpResponseForbidden
-        return HttpResponseForbidden(_("需要 Staff 权限"))
-    html = """
-    <html>
-      <head><title>IP Guard Dashboard</title></head>
-      <body>
-        <h1>IP Guard %s</h1>
-        <p>%s</p>
-        <ul>
-          <li>/api/dashboard/ - %s</li>
-          <li>/api/recent-records/ - %s</li>
-          <li>/api/policy/ - %s</li>
-          <li>/api/geo-pools/status/ - %s</li>
-          <li>/api/geo-pools/sync/ - %s</li>
-          <li>/api/unban/ - %s</li>
-          <li>/api/health/ - %s</li>
-        </ul>
-      </body>
-    </html>
-    """ % (
-        _("企业运营面板"),
-        _("请通过以下接口查看数据："),
-        _("统计指标"),
-        _("近几日攻击与访问汇总"),
-        _("策略读取/更新"),
-        _("中国内/国际 CIDR 池同步状态"),
-        _("手动同步 CIDR 池至 Redis"),
-        _("解封 IP"),
-        _("健康状态"),
-    )
-    return HttpResponse(html)
 
 
 @csrf_protect
@@ -1924,3 +1886,182 @@ def scheduled_task_run_view(request: HttpRequest, task_id: int) -> JsonResponse:
     scheduler._execute_task_async(task)
 
     return api_success(message=_("任务已触发执行"))
+
+
+@csrf_protect
+@api_permission_required("auth.view_user")
+@require_GET
+def django_admin_group_list_view(request: HttpRequest) -> JsonResponse:
+    """组列表，供系统用户管理表单多选。"""
+    items = [{"id": g.id, "name": g.name} for g in Group.objects.order_by("name")]
+    # 使用对象包装：api_success 内 `data or {}` 会把空列表当成假值
+    return api_success({"items": items})
+
+
+def _django_user_to_dict(u: User) -> dict:
+    return {
+        "id": u.id,
+        "username": u.username,
+        "email": u.email or "",
+        "first_name": u.first_name or "",
+        "last_name": u.last_name or "",
+        "is_staff": u.is_staff,
+        "is_superuser": u.is_superuser,
+        "is_active": u.is_active,
+        "last_login": u.last_login.isoformat() if u.last_login else None,
+        "date_joined": u.date_joined.isoformat() if u.date_joined else None,
+        "groups": [{"id": g.id, "name": g.name} for g in u.groups.all()],
+    }
+
+
+@csrf_protect
+@require_http_methods(["GET", "POST"])
+def django_admin_users_collection_view(request: HttpRequest) -> JsonResponse:
+    """Django 系统用户列表（GET）与创建（POST），权限与 auth 应用一致。"""
+    actor = _resolve_request_user(request)
+    if not actor.is_authenticated:
+        return api_error(_("未登录或登录已过期"), code=4010, status=401)
+    if not actor.is_staff:
+        return api_error(_("权限不足"), code=4030, status=403)
+
+    if request.method == "GET":
+        if not actor.has_perm("auth.view_user"):
+            return api_error(_("权限不足：缺少操作权限"), code=4031, status=403)
+        page = _get_int_param(request, "page", 1)
+        page_size = _get_int_param(request, "page_size", 20, max_value=100)
+        q = str(request.GET.get("q", "")).strip()
+        qs = User.objects.prefetch_related("groups").all().order_by("-date_joined")
+        if q:
+            qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q))
+        paginator = Paginator(qs, page_size)
+        page_obj = paginator.get_page(page)
+        items = [_django_user_to_dict(u) for u in page_obj.object_list]
+        return api_success(
+            {
+                "items": items,
+                "pagination": {
+                    "page": page_obj.number,
+                    "page_size": page_size,
+                    "total": paginator.count,
+                    "num_pages": paginator.num_pages,
+                },
+            }
+        )
+
+    if not actor.has_perm("auth.add_user"):
+        return api_error(_("权限不足：缺少操作权限"), code=4031, status=403)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    username = str(payload.get("username", "")).strip()
+    password = str(payload.get("password", ""))
+    email = str(payload.get("email", "")).strip()
+    if not username:
+        return api_error(_("用户名不能为空"), code=4002, status=400)
+    if len(password) < 8:
+        return api_error(_("密码长度至少 8 位"), code=4003, status=400)
+    if User.objects.filter(username=username).exists():
+        return api_error(_("用户名已存在"), code=4004, status=400)
+    want_super = bool(payload.get("is_superuser", False))
+    if want_super and not actor.is_superuser:
+        return api_error(_("仅超级用户可创建超级用户账号"), code=4032, status=403)
+    user = User.objects.create_user(username=username, email=email or "", password=password)
+    user.is_staff = bool(payload.get("is_staff", False))
+    user.is_superuser = want_super
+    user.first_name = str(payload.get("first_name", "")).strip()[:150]
+    user.last_name = str(payload.get("last_name", "")).strip()[:150]
+    user.save()
+    _log_security_audit(request, "django_user_create", f"actor={actor.username} new={username}", actor)
+    user = User.objects.prefetch_related("groups").get(pk=user.pk)
+    return api_success(_django_user_to_dict(user), message=_("用户已创建"))
+
+
+@csrf_protect
+@require_http_methods(["GET", "PATCH"])
+def django_admin_user_detail_view(request: HttpRequest, user_id: int) -> JsonResponse:
+    """单用户详情（GET）与部分更新（PATCH）。"""
+    actor = _resolve_request_user(request)
+    if not actor.is_authenticated:
+        return api_error(_("未登录或登录已过期"), code=4010, status=401)
+    if not actor.is_staff:
+        return api_error(_("权限不足"), code=4030, status=403)
+    try:
+        target = User.objects.prefetch_related("groups").get(pk=user_id)
+    except User.DoesNotExist:
+        return api_error(_("用户不存在"), code=4040, status=404)
+
+    if request.method == "GET":
+        if not actor.has_perm("auth.view_user"):
+            return api_error(_("权限不足：缺少操作权限"), code=4031, status=403)
+        return api_success(_django_user_to_dict(target))
+
+    if not actor.has_perm("auth.change_user"):
+        return api_error(_("权限不足：缺少操作权限"), code=4031, status=403)
+    if target.is_superuser and not actor.is_superuser:
+        return api_error(_("不能修改超级用户账号"), code=4032, status=403)
+
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+
+    if "email" in payload:
+        target.email = str(payload.get("email") or "").strip()[:254]
+    if "first_name" in payload:
+        target.first_name = str(payload.get("first_name") or "").strip()[:150]
+    if "last_name" in payload:
+        target.last_name = str(payload.get("last_name") or "").strip()[:150]
+
+    if "is_active" in payload:
+        new_active = bool(payload.get("is_active"))
+        if target.pk == actor.pk and not new_active:
+            return api_error(_("不能禁用当前登录账号"), code=4005, status=400)
+        target.is_active = new_active
+
+    if "is_staff" in payload:
+        new_staff = bool(payload.get("is_staff"))
+        if target.pk == actor.pk and not new_staff:
+            return api_error(_("不能取消当前账号的 Staff 权限"), code=4006, status=400)
+        target.is_staff = new_staff
+
+    if "is_superuser" in payload:
+        if not actor.is_superuser:
+            return api_error(_("仅超级用户可修改超级用户标志"), code=4032, status=403)
+        target.is_superuser = bool(payload.get("is_superuser"))
+
+    if "group_ids" in payload:
+        raw_ids = payload.get("group_ids")
+        if not isinstance(raw_ids, list):
+            return api_error(_("group_ids 须为数组"), code=4007, status=400)
+        ids = []
+        for x in raw_ids:
+            try:
+                ids.append(int(x))
+            except (TypeError, ValueError):
+                return api_error(_("group_ids 含非法 ID"), code=4008, status=400)
+        groups = list(Group.objects.filter(pk__in=ids))
+        if len(groups) != len(set(ids)):
+            return api_error(_("存在无效的组 ID"), code=4009, status=400)
+        target.groups.set(groups)
+
+    pwd = payload.get("password")
+    if pwd is not None and str(pwd) != "":
+        if not actor.has_perm("auth.change_user"):
+            return api_error(_("无权修改密码"), code=4031, status=403)
+        if target.is_superuser and not actor.is_superuser:
+            return api_error(_("不能修改超级用户密码"), code=4032, status=403)
+        pwd_str = str(pwd)
+        if len(pwd_str) < 8:
+            return api_error(_("密码长度至少 8 位"), code=4003, status=400)
+        target.set_password(pwd_str)
+
+    target.save()
+    _log_security_audit(
+        request,
+        "django_user_update",
+        f"actor={actor.username} target={target.username} fields={list(payload.keys())}",
+        actor,
+    )
+    target = User.objects.prefetch_related("groups").get(pk=target.pk)
+    return api_success(_django_user_to_dict(target), message=_("用户已更新"))
