@@ -46,6 +46,10 @@
           <el-icon><svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M768 192H192V96a32 32 0 0 0-32-32h-64a32 32 0 0 0-32 32v96H32a32 32 0 0 0-32 32v704a32 32 0 0 0 32 32h736a32 32 0 0 0 32-32V224a32 32 0 0 0-32-32zM192 160h640a32 32 0 0 0 0-64H192a32 32 0 0 0 0 64zm704 736H64V256h832v640z"/></svg></el-icon>
           {{ t('securityAudit.title') }}
         </el-menu-item>
+        <el-menu-item v-if="canManageSystemUsers" index="/system-users">
+          <el-icon><svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M858.5 763.6a374 374 0 0 0-80.2-119.6 375.4 375.4 0 0 0-119.6-80.2c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.5 760 362c0-137-111-248-248-248S264 225 264 362c0 82.5 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.6 80.2a374 374 0 0 0-80.2 119.6A375.3 375.3 0 0 0 136 901.8a8 8 0 0 0 8 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 0 0 8-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 560c-109.9 0-200-90.1-200-200s90.1-200 200-200 200 90.1 200 200-90.1 200-200 200z"/></svg></el-icon>
+          {{ t('nav.systemUsers') }}
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -120,6 +124,13 @@ const authStore = useAuthStore();
 const i18nStore = useI18nStore();
 const themeStore = useThemeStore();
 const can = (perm) => authStore.hasPerm(perm);
+
+/** 具备 auth.view_user 或超级用户时可管理系统用户 */
+const canManageSystemUsers = computed(() => {
+  const u = authStore.user;
+  if (!u) return false;
+  return Boolean(u.is_superuser) || authStore.hasPerm("auth.view_user");
+});
 
 const currentLangLabel = computed(() => {
   const lang = i18nStore.languages.find((l) => l.code === i18nStore.currentLocale);

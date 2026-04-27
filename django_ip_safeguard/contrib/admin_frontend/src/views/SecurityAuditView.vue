@@ -94,6 +94,8 @@ const actionTypeLabels = computed(() => ({
   email_change_confirm: t('securityAudit.actionTypes.email_change_confirm'),
   '2fa_enable': t('securityAudit.actionTypes.2fa_enable'),
   '2fa_disable': t('securityAudit.actionTypes.2fa_disable'),
+  django_user_create: t('securityAudit.actionTypes.django_user_create'),
+  django_user_update: t('securityAudit.actionTypes.django_user_update'),
 }));
 
 async function fetchLogs() {

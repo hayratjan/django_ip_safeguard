@@ -56,3 +56,8 @@ export const getScheduledTaskDetailApi = (taskId) => http.get(`/scheduled-tasks/
 export const updateScheduledTaskApi = (taskId, payload) => http.put(`/scheduled-tasks/${taskId}/`, payload);
 export const deleteScheduledTaskApi = (taskId) => http.delete(`/scheduled-tasks/${taskId}/`);
 export const runScheduledTaskApi = (taskId) => http.post(`/scheduled-tasks/${taskId}/run/`);
+
+export const listDjangoUsersApi = (params) => http.get("/admin/users/", { params });
+export const createDjangoUserApi = (payload) => http.post("/admin/users/", payload);
+export const patchDjangoUserApi = (userId, payload) => http.patch(`/admin/users/${userId}/`, payload);
+export const listDjangoGroupsApi = () => http.get("/admin/groups/");
