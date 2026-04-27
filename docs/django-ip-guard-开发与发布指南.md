@@ -404,6 +404,15 @@ pip install -i https://test.pypi.org/simple/ django-ip-safeguard
 
 ## 7.4 发布到正式 PyPI
 
+推荐在仓库根目录复制 `.pypi-token.env.example` 为 **`.pypi-token.env`**（已加入 `.gitignore`），填入令牌后：
+
+```bash
+source .pypi-token.env
+python -m twine upload dist/* --non-interactive
+```
+
+或临时导出（勿将令牌写入任何会提交的文档）：
+
 ```bash
 export TWINE_USERNAME=__token__
 export TWINE_PASSWORD='pypi-你的PyPIToken'

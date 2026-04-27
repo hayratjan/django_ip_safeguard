@@ -16,3 +16,6 @@ frontend-admin/node_modules/*
 frontend-admin/.vite/
 *.mo
 geoip2_data/
+
+# 本地 PyPI 上传凭据（勿提交）
+.pypi-token.env
