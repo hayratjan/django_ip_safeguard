@@ -10,6 +10,9 @@ build/
 demo_project/.venv/
 demo_project/db.sqlite3
 demo_project/demo_site/db.sqlite3
+demo2/db.sqlite3
+db.sqlite3
 frontend-admin/node_modules/*
+frontend-admin/.vite/
 *.mo
 geoip2_data/
