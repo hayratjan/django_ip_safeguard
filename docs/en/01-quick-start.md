@@ -1,22 +1,23 @@
 # Quick Start Guide
 
-This guide will help you get Django IP Safeguard up and running in 5 minutes.
+This guide helps you install from **PyPI** and run Django IP Safeguard in about 5 minutes.
 
 ## Prerequisites
 
-- Python 3.10 or higher
+- Python 3.10+
 - Django 6.0+
-- Redis 5.0+ (optional but recommended)
+- Redis 5.0+ (recommended for production: intel cache, bans, rate limits, geo pools)
 
-## Installation
+## Install from PyPI
 
-```bash
-pip install django-ip-safeguard
-```
+- Package page: <https://pypi.org/project/django-ip-safeguard/>
+- Install: `pip install django-ip-safeguard`
+- Upgrade: `pip install -U django-ip-safeguard`
+- Optional GeoIP2: `pip install "django-ip-safeguard[geoip2]"`
 
 ## Django Settings
 
-Add to your `settings.py`:
+Register the app in `settings.py`. **Middleware order** (recommended): `SecurityMiddleware` → `SessionMiddleware` → **`IpGuardMiddleware`** → `CommonMiddleware` → `CsrfViewMiddleware` → `AuthenticationMiddleware` → …
 
 ```python
 INSTALLED_APPS = [
@@ -27,15 +28,21 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    # ...
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django_ip_safeguard.middleware.IpGuardMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     # ...
 ]
 ```
 
+For cross-origin deployments, set `CSRF_TRUSTED_ORIGINS`. You may group settings in a nested **`IP_GUARD`** dict; see [Installation](02-installation.md).
+
 ## URL Configuration
 
-Add to your `urls.py`:
+Mount the built-in dashboard and APIs under `/ip-guard/`:
 
 ```python
 from django.urls import path, include
@@ -65,7 +72,7 @@ python manage.py createsuperuser
 python manage.py runserver 8000
 ```
 
-Visit `http://localhost:8000/ip-guard/` to access the admin dashboard.
+Open **`http://127.0.0.1:8000/ip-guard/`** (sign in; permissions apply per model).
 
 ## Next Steps
 

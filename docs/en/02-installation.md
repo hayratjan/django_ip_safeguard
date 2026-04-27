@@ -19,10 +19,13 @@
 
 ## Installation Methods
 
-### From PyPI
+### From PyPI (recommended)
+
+Project page: <https://pypi.org/project/django-ip-safeguard/>
 
 ```bash
 pip install django-ip-safeguard
+pip install -U django-ip-safeguard   # upgrade to latest on PyPI
 ```
 
 ### From Source

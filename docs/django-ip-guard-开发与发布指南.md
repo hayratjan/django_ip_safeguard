@@ -379,8 +379,11 @@ npm run dev
 
 ## 7.2 构建与校验
 
+发布前在仓库根目录**提升 `pyproject.toml` 中的 `version`**（若该版本已在 PyPI 存在则上传会失败）。清理旧产物后构建：
+
 ```bash
 python -m pip install --upgrade build twine
+rm -rf dist/ build/ *.egg-info
 python -m build
 python -m twine check dist/*
 ```

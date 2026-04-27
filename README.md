@@ -11,8 +11,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/enterprise-ready-0F766E.svg" alt="enterprise-ready" />
   <img src="https://img.shields.io/badge/security-hardened-166534.svg" alt="security-hardened" />
-  <img src="https://img.shields.io/badge/django-4.2%2B-0C4B33.svg" alt="django" />
-  <img src="https://img.shields.io/badge/python-3.9%2B-3776AB.svg" alt="python" />
+  <a href="https://pypi.org/project/django-ip-safeguard/"><img src="https://img.shields.io/pypi/v/django-ip-safeguard.svg" alt="PyPI" /></a>
+  <img src="https://img.shields.io/badge/django-6.0%2B-0C4B33.svg" alt="django" />
+  <img src="https://img.shields.io/badge/python-3.10%2B-3776AB.svg" alt="python" />
 </p>
 
 ## 📌 项目简介
@@ -40,15 +41,22 @@
 4. 风险引擎判定放行/阻断；按开关记录审计日志（可配置脱敏）。
 5. Dashboard 对外提供管理与运营数据接口。
 
-## ⚡ 快速接入（企业版）
+## ⚡ 快速接入（从 PyPI）
+
+**包名**：[PyPI · django-ip-safeguard](https://pypi.org/project/django-ip-safeguard/)  
+**升级**：`pip install -U django-ip-safeguard`
 
 ### 1) 安装
 
 ```bash
 pip install django-ip-safeguard
+# 可选：本地 GeoIP2
+# pip install "django-ip-safeguard[geoip2]"
 ```
 
 ### 2) 注册 App 与中间件
+
+将 `IpGuardMiddleware` 放在 **`SessionMiddleware` 之后**、`CommonMiddleware` / `CsrfViewMiddleware` / `AuthenticationMiddleware` 等**之前**，以便尽早按 IP 决策，且与 Session 兼容：
 
 ```python
 INSTALLED_APPS = [
@@ -57,12 +65,17 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django_ip_safeguard.middleware.IpGuardMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     # ...
 ]
 ```
 
-### 3) 挂载企业控制台 URL
+### 3) 挂载控制台与 API（内置 Vue 构建产物）
 
 ```python
 from django.urls import include, path
@@ -72,13 +85,17 @@ urlpatterns = [
 ]
 ```
 
+访问 **`/ip-guard/`** 打开管理控制台（Session + CSRF）。若部署在其它域名/端口，请在 `settings` 中配置 `CSRF_TRUSTED_ORIGINS`（如 `https://ops.example.com`）。
+
 ### 4) 执行迁移
 
 ```bash
 python manage.py migrate
 ```
 
-### 5) 设置最小生产配置
+### 5) 最小可用配置
+
+可使用扁平 `IP_GUARD_*`，或使用 **`IP_GUARD` 嵌套字典**（与扁平键合并：嵌套为基线，同名扁平键覆盖）。详见 [docs/zh/02-installation.md](docs/zh/02-installation.md) / [docs/en/02-installation.md](docs/en/02-installation.md)。
 
 ```python
 import os
@@ -181,7 +198,7 @@ ruff check .
 
 ## 🖥️ Vue3 企业控制台（Element Plus）
 
-新增目录：`frontend-admin/`，技术栈为 Vue3 + Vite + Element Plus + Pinia + Axios。
+**PyPI 安装包**已附带构建好的静态资源（`django_ip_safeguard/contrib/.../static`），挂载 `urls` 即可用。若需二次开发前端，可使用仓库内 `frontend-admin/` 或包内 `django_ip_safeguard/contrib/admin_frontend/`，技术栈为 Vue3 + Vite + Element Plus + Pinia + Axios。
 
 ### 本地启动
 

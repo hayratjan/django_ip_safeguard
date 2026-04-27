@@ -1,6 +1,6 @@
 # Django IP Safeguard
 
-![版本](https://img.shields.io/badge/version-0.1.0-blue.svg)
+[![PyPI](https://img.shields.io/pypi/v/django-ip-safeguard.svg)](https://pypi.org/project/django-ip-safeguard/)
 ![Django](https://img.shields.io/badge/Django-6.0-green.svg)
 ![Python](https://img.shields.io/badge/Python-3.10+-yellow.svg)
 ![许可证](https://img.shields.io/badge/License-MIT-orange.svg)
