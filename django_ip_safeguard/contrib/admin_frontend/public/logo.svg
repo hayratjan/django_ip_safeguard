@@ -1,0 +1,24 @@
+<svg width="260" height="260" viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Django IP Safeguard Logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F766E"/>
+      <stop offset="100%" stop-color="#0B3C5D"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="260" height="260" rx="36" fill="url(#bg)"/>
+
+  <path d="M130 38 L208 72 L200 152 C194 188 166 218 130 234 C94 218 66 188 60 152 L52 72 Z"
+        fill="url(#shield)" stroke="#A7F3D0" stroke-width="3" stroke-linejoin="round"/>
+
+  <circle cx="130" cy="126" r="40" fill="none" stroke="#ECFDF5" stroke-width="2.5"/>
+  <ellipse cx="130" cy="126" rx="22" ry="40" fill="none" stroke="#ECFDF5" stroke-width="1.5" opacity="0.7"/>
+  <line x1="90" y1="126" x2="170" y2="126" stroke="#ECFDF5" stroke-width="1.5" opacity="0.7"/>
+  <path d="M95 110 H165 M95 142 H165" stroke="#ECFDF5" stroke-width="1.2" opacity="0.5"/>
+
+  <path d="M112 128 L124 140 L150 114" fill="none" stroke="#064E3B" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

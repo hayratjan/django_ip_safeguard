@@ -4,6 +4,10 @@
 
 Django IP Safeguard 包含一个基于 Vue.js 的管理仪表盘，入口为 **`/ip-guard/`**（与 `path('ip-guard/', include(...))` 对应）。
 
+## 浏览器标签图标（Logo）
+
+入口页 `contrib/admin_frontend/index.html` 的 `<head>` 中已配置 **`rel="icon"`**（SVG）与 **`apple-touch-icon`**，构建后地址为 **`/ip-guard/logo.svg`**（源文件位于 `contrib/admin_frontend/public/logo.svg`，与侧栏/登录页所用图形一致）。
+
 ## 功能
 
 ### 仪表盘

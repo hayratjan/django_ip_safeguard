@@ -4,6 +4,10 @@
 
 Django IP Safeguard includes a Vue.js-based admin dashboard served at **`/ip-guard/`** (under `path('ip-guard/', include(...))`).
 
+## Browser tab icon (logo)
+
+The dashboard entry `contrib/admin_frontend/index.html` declares **`rel="icon"`** (SVG) and **`apple-touch-icon`** in `<head>`. After build they resolve to **`/ip-guard/logo.svg`** (source: `contrib/admin_frontend/public/logo.svg`, same artwork as the sidebar/login logo).
+
 ## Features
 
 ### Dashboard
