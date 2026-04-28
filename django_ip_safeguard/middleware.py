@@ -1,23 +1,41 @@
+"""IP Guard 中间件。
+
+新版要点（v0.2.0）：
+- ``IP_GUARD_SKIP_PATH_PREFIXES``：完全跳过判定（如健康检查、Webhook）。
+- 所有拦截响应都经 :mod:`action_executor` 集中构造，按 Accept 自动返回 JSON / HTML。
+- 封禁分支补齐 :func:`log_access_decision`，与黑名单/风险分支保持一致。
+- 情报锁竞争：拿不到锁短暂等待后重读缓存一次，仍无则按 fail-open/close 处理。
+- 启动时尝试在后台订阅 Redis 策略失效通道，多 worker 场景下变更秒级生效。
+"""
+
+from __future__ import annotations
+
 import logging
+import time
 
 from django.http import JsonResponse
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy as _t
 
 from django_ip_safeguard.conf import get_settings
-
-_t = _
+from django_ip_safeguard.services.action_executor import build_response
+from django_ip_safeguard.services.asn_lookup import AsnLookupService
 from django_ip_safeguard.services.audit_service import log_access_decision
 from django_ip_safeguard.services.ban_service import ban_ip
 from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.circuit_breaker import CircuitBreaker
+from django_ip_safeguard.services.geo_ip_pool_runtime import (
+    evaluate_geo_ip_pool_rules,
+    infer_country_from_pools,
+)
 from django_ip_safeguard.services.ip_matcher import first_matching_rule
 from django_ip_safeguard.services.ip_resolver import resolve_client_ip
 from django_ip_safeguard.services.layered_cache import LayeredCacheService
+from django_ip_safeguard.services.policy_service import (
+    load_effective_policy,
+    start_policy_invalidate_subscriber,
+)
 from django_ip_safeguard.services.provider_factory import build_provider
-from django_ip_safeguard.services.geo_ip_pool_runtime import evaluate_geo_ip_pool_rules, infer_country_from_pools
-from django_ip_safeguard.services.policy_service import load_effective_policy
 from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
-from django_ip_safeguard.services.asn_lookup import AsnLookupService
 from django_ip_safeguard.types import IpIntel
 
 logger = logging.getLogger(__name__)
@@ -31,6 +49,10 @@ def should_fail_open(path: str, default_fail_open: bool, open_prefixes: tuple, c
         if prefix and path.startswith(prefix):
             return True
     return default_fail_open
+
+
+def _path_in(prefixes: tuple, path: str) -> bool:
+    return any(p and path.startswith(p) for p in prefixes)
 
 
 class IpGuardMiddleware:
@@ -67,6 +89,12 @@ class IpGuardMiddleware:
             from django_ip_safeguard.services.ip_correlation import IpCorrelationService
             self.ip_correlation = IpCorrelationService(self.cache_service, self.config)
 
+        # 多 worker 失效订阅；失败不影响主流程
+        try:
+            start_policy_invalidate_subscriber(self.config.redis_url)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _get_intel_from_cache(self, ip: str):
         if self.layered_cache:
             return self.layered_cache.get_ip_intel(ip)
@@ -99,8 +127,16 @@ class IpGuardMiddleware:
         else:
             self.cache_service.release_intel_lock(ip)
 
+    def _build_block(self, request, runtime_config, *, ip, reason, action="block"):
+        return build_response(request, action, reason, ip, runtime_config)
+
     def __call__(self, request):
-        runtime_config = load_effective_policy(self.config)
+        # 跳过路径：在策略加载之前就返回，能力上等同"未启用"
+        skip_prefixes = tuple(self.config.skip_path_prefixes or ())
+        if skip_prefixes and _path_in(skip_prefixes, request.path):
+            return self.get_response(request)
+
+        runtime_config = load_effective_policy(self.config, request=request)
 
         if not runtime_config.enabled:
             return self.get_response(request)
@@ -109,7 +145,7 @@ class IpGuardMiddleware:
         if not client_ip:
             return self.get_response(request)
 
-        wl_hit, _ = first_matching_rule(client_ip, runtime_config.ip_whitelist)
+        wl_hit, _wl_rule = first_matching_rule(client_ip, runtime_config.ip_whitelist)
         if wl_hit:
             return self.get_response(request)
 
@@ -117,7 +153,7 @@ class IpGuardMiddleware:
 
         bl_hit, bl_rule = first_matching_rule(client_ip, runtime_config.ip_blacklist)
         if bl_hit:
-            reason = _("命中 IP 黑名单: %(rule)s") % {"rule": bl_rule}
+            reason = _t("命中 IP 黑名单: %(rule)s") % {"rule": bl_rule}
             log_access_decision(
                 enabled=runtime_config.use_db_log,
                 ip=client_ip,
@@ -128,14 +164,7 @@ class IpGuardMiddleware:
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
-            return JsonResponse(
-                {
-                    "detail": str(_t("访问被安全策略阻止")),
-                    "reason": str(reason),
-                    "ip": client_ip,
-                },
-                status=runtime_config.block_status_code,
-            )
+            return self._build_block(request, runtime_config, ip=client_ip, reason=str(reason))
 
         geo_reason = evaluate_geo_ip_pool_rules(client_ip, runtime_config, self.cache_service)
         if geo_reason:
@@ -149,14 +178,7 @@ class IpGuardMiddleware:
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
-            return JsonResponse(
-                {
-                    "detail": str(_t("访问被安全策略阻止")),
-                    "reason": geo_reason,
-                    "ip": client_ip,
-                },
-                status=runtime_config.block_status_code,
-            )
+            return self._build_block(request, runtime_config, ip=client_ip, reason=geo_reason)
 
         if self._is_rate_limited(client_ip, runtime_config.rate_limit_per_minute):
             reason = str(_t("超过单 IP 每分钟请求上限"))
@@ -170,20 +192,21 @@ class IpGuardMiddleware:
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
-            return JsonResponse(
-                {
-                    "detail": str(_t("访问被安全策略阻止")),
-                    "reason": reason,
-                    "ip": client_ip,
-                },
-                status=runtime_config.block_status_code,
-            )
+            return self._build_block(request, runtime_config, ip=client_ip, reason=reason, action="rate_limit")
 
         if self._is_banned(client_ip):
-            return JsonResponse(
-                {"detail": str(_t("IP 已被封禁")), "ip": client_ip},
-                status=runtime_config.block_status_code,
+            reason = str(_t("IP 已被封禁"))
+            log_access_decision(
+                enabled=runtime_config.use_db_log,
+                ip=client_ip,
+                path=request.path,
+                decision="block",
+                reason=reason,
+                ip_intel=policy_intel,
+                ip_mask_enabled=runtime_config.ip_mask_enabled,
+                ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
+            return self._build_block(request, runtime_config, ip=client_ip, reason=reason)
 
         ip_intel = self._get_intel_from_cache(client_ip)
         if not ip_intel:
@@ -195,36 +218,40 @@ class IpGuardMiddleware:
                 client_ip, ttl=runtime_config.dedupe_lock_seconds
             )
             if not lock_acquired:
-                return self._handle_provider_failed(request, runtime_config)
-            try:
-                ip_intel = self.provider.fetch_ip_intel(client_ip)
-                self.asn_lookup.enrich_ip_intel(ip_intel)
+                # 短暂等待，给持锁的另一进程留出写缓存的时间，再尝试读取一次
+                time.sleep(0.05)
+                ip_intel = self._get_intel_from_cache(client_ip)
+                if not ip_intel:
+                    return self._handle_provider_failed(request, runtime_config)
+            else:
+                try:
+                    ip_intel = self.provider.fetch_ip_intel(client_ip)
+                    self.asn_lookup.enrich_ip_intel(ip_intel)
 
-                if not ip_intel.country_code or ip_intel.country_code.upper() == "UNKNOWN":
-                    inferred = infer_country_from_pools(client_ip, self.config, self.cache_service)
-                    if inferred:
-                        ip_intel.country_code = inferred
-                        if inferred == "CN" and not ip_intel.country_name:
-                            ip_intel.country_name = "中国"
+                    if not ip_intel.country_code or ip_intel.country_code.upper() == "UNKNOWN":
+                        inferred = infer_country_from_pools(client_ip, self.config, self.cache_service)
+                        if inferred:
+                            ip_intel.country_code = inferred
+                            if inferred == "CN" and not ip_intel.country_name:
+                                ip_intel.country_name = "中国"
 
-                if self.local_risk_engine:
-                    local_reasons = self.local_risk_engine.evaluate(client_ip, ip_intel)
-                    if local_reasons:
-                        logger.info("本地风险规则命中: %s - %s", client_ip, local_reasons)
+                    if self.local_risk_engine:
+                        local_reasons = self.local_risk_engine.evaluate(client_ip, ip_intel)
+                        if local_reasons:
+                            logger.info("本地风险规则命中: %s - %s", client_ip, local_reasons)
 
-                ttl = (
-                    runtime_config.high_risk_cache_ttl
-                    if ip_intel.risk_score >= runtime_config.risk_score_threshold
-                    else runtime_config.low_risk_cache_ttl
-                )
-                self._set_intel_to_cache(ip_intel, ttl=ttl)
-                self.circuit_breaker.record_success()
-            except Exception as exc:
-                logger.exception("IP 情报查询失败: %s", exc)
-                self.circuit_breaker.record_failure()
-                return self._handle_provider_failed(request, runtime_config)
-            finally:
-                if lock_acquired:
+                    ttl = (
+                        runtime_config.high_risk_cache_ttl
+                        if ip_intel.risk_score >= runtime_config.risk_score_threshold
+                        else runtime_config.low_risk_cache_ttl
+                    )
+                    self._set_intel_to_cache(ip_intel, ttl=ttl)
+                    self.circuit_breaker.record_success()
+                except Exception as exc:
+                    logger.exception("IP 情报查询失败: %s", exc)
+                    self.circuit_breaker.record_failure()
+                    return self._handle_provider_failed(request, runtime_config)
+                finally:
                     self._release_lock(client_ip)
 
         decision = evaluate_ip_risk(ip_intel, runtime_config)
@@ -248,9 +275,9 @@ class IpGuardMiddleware:
                 )
             if self.ip_correlation:
                 self.ip_correlation.record_access(client_ip, is_blocked=True)
-            return JsonResponse(
-                {"detail": str(_t("访问被安全策略阻止")), "reason": decision.reason, "ip": client_ip},
-                status=runtime_config.block_status_code,
+            action = decision.action if decision.action in {"block", "ban", "challenge", "rate_limit"} else "block"
+            return self._build_block(
+                request, runtime_config, ip=client_ip, reason=decision.reason, action=action
             )
 
         log_access_decision(
