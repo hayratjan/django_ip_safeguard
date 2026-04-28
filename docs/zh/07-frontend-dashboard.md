@@ -44,16 +44,9 @@ Django IP Safeguard 包含一个基于 Vue.js 的管理仪表盘，入口为 **`
 
 ### 系统用户管理（Django 账号）
 
-Vue 控制台中的「**用户设置**」仅管理**当前登录用户**本人（资料、密码、2FA、API 密钥等）。对 **Django 系统用户**（增删改其他账号、分配组、Staff/Superuser 等）请使用以下方式之一：
+Vue 控制台中的「**用户设置**」仅管理**当前登录用户**本人（资料、密码、2FA、API 密钥等）。对 **其他 Django 系统用户**（新建账号、分配组、Staff/Superuser、启用/停用、重置密码等），请在侧栏「**系统用户管理**」中完成：列表分页查询，**新建用户**/**编辑**在页面内对话框操作，无需跳转 Django Admin。
 
-1. **Django Admin（推荐）**  
-   使用具备权限的账号访问 **`/admin/auth/user/`**（或先打开 **`/admin/`** 再进入「用户」）。需已为该账号分配 `auth` 应用下相应权限（如查看/新增/修改用户），超级用户拥有全部权限。
-
-2. **控制台内嵌入口**  
-   若当前账号为超级用户或拥有 `auth.view_user`，侧栏会显示「**系统用户管理**」，可在 Vue 内分页查看与编辑用户；亦可从该页跳转至 Admin 做更复杂操作。
-
-3. **控制台内置 API**  
-   插件提供 `GET/POST /ip-guard/api/admin/users/` 与 `PATCH /ip-guard/api/admin/users/<id>/`（权限与 Django `auth` 权限一致），由上述「系统用户管理」页面调用。
+需已为账号分配 `auth` 应用下相应权限（如 `auth.view_user`、`auth.add_user`、`auth.change_user`）；超级用户拥有全部权限。插件页面调用 `GET/POST /ip-guard/api/admin/users/` 与 `PATCH /ip-guard/api/admin/users/<id>/`（与 Django `auth` 权限一致）。若仍需使用原生 Django Admin，可自行访问 **`/admin/auth/user/`**。
 
 ### 系统设置
 

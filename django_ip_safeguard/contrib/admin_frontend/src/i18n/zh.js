@@ -450,8 +450,7 @@ export default {
   },
   systemUsers: {
     title: "系统用户管理",
-    intro: "管理 Django 系统账号（与「用户设置」中的个人资料不同）。复杂场景可跳转 Django Admin。",
-    openDjangoAdmin: "在 Django Admin 中打开",
+    intro: "在此页面创建与编辑 Django 系统账号（与「用户设置」中的个人资料不同）。点击「编辑」修改邮箱、Staff/超级用户、启用状态、所属组与密码。",
     searchPlaceholder: "用户名或邮箱",
     createUser: "新建用户",
     editUser: "编辑",
@@ -467,6 +466,7 @@ export default {
     cancel: "取消",
     createSuccess: "用户已创建",
     updateSuccess: "已保存",
+    updateFailed: "保存失败",
     loadFailed: "加载失败",
   },
   securityAudit: {

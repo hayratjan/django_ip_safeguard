@@ -2,9 +2,6 @@
   <div class="page-card">
     <h3>{{ t("systemUsers.title") }}</h3>
     <p class="intro">{{ t("systemUsers.intro") }}</p>
-    <el-space wrap style="margin-bottom: 12px">
-      <el-button type="primary" link @click="openDjangoAdmin">{{ t("systemUsers.openDjangoAdmin") }}</el-button>
-    </el-space>
 
     <el-space wrap style="margin-bottom: 12px">
       <el-input v-model="query.q" :placeholder="t('systemUsers.searchPlaceholder')" style="width: 220px" clearable />
@@ -187,10 +184,6 @@ const onSizeChange = () => {
   load();
 };
 
-const openDjangoAdmin = () => {
-  window.open("/admin/auth/user/", "_blank", "noopener,noreferrer");
-};
-
 const resetCreate = () => {
   createForm.username = "";
   createForm.password = "";
@@ -256,6 +249,8 @@ const submitEdit = async () => {
     ElMessage.success(t("systemUsers.updateSuccess"));
     editVisible.value = false;
     await load();
+  } catch {
+    ElMessage.error(t("systemUsers.updateFailed"));
   } finally {
     editSaving.value = false;
   }

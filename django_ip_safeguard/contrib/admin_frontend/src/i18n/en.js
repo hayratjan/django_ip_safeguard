@@ -452,8 +452,7 @@ export default {
   systemUsers: {
     title: "System user management",
     intro:
-      "Manage Django accounts (not the same as personal profile under User settings). Use Django Admin for advanced operations.",
-    openDjangoAdmin: "Open in Django Admin",
+      "Create and edit Django accounts here (not the same as personal profile under User settings). Use Edit to change email, staff/superuser flags, active status, groups, and password.",
     searchPlaceholder: "Username or email",
     createUser: "New user",
     editUser: "Edit",
@@ -469,6 +468,7 @@ export default {
     cancel: "Cancel",
     createSuccess: "User created",
     updateSuccess: "Saved",
+    updateFailed: "Save failed",
     loadFailed: "Failed to load",
   },
   securityAudit: {

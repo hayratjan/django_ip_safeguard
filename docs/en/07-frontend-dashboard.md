@@ -44,16 +44,9 @@ Manage banned IPs:
 
 ### Django system users (accounts)
 
-**User Settings** in the Vue console applies only to the **signed-in user** (profile, password, 2FA, API keys). To manage **other Django users** (create/edit accounts, groups, staff/superuser flags), use one of the following:
+**User Settings** applies only to the **signed-in user** (profile, password, 2FA, API keys). To manage **other Django users** (create accounts, assign groups, staff/superuser, active flag, password reset), use **System user management** in the sidebar: paginated list/search, **New user** / **Edit** in on-page dialogs—no redirect to Django Admin.
 
-1. **Django Admin (recommended)**  
-   Open **`/admin/auth/user/`** (or **`/admin/`** then Users). Requires the appropriate `auth` permissions (e.g. `auth.view_user`, `auth.add_user`, `auth.change_user`); superusers have full access.
-
-2. **In-console entry**  
-   If the account is a superuser or has `auth.view_user`, the sidebar shows **System user management** for paginated list/edit inside Vue, with an optional jump to Admin for advanced operations.
-
-3. **Built-in API**  
-   The package exposes `GET/POST /ip-guard/api/admin/users/` and `PATCH /ip-guard/api/admin/users/<id>/`, aligned with Django `auth` permissions, used by the system user management page.
+Grant `auth` permissions as needed (`auth.view_user`, `auth.add_user`, `auth.change_user`); superusers have full access. The UI calls `GET/POST /ip-guard/api/admin/users/` and `PATCH /ip-guard/api/admin/users/<id>/`. If you still need the stock Django Admin UI, open **`/admin/auth/user/`** manually.
 
 ### System Settings
 
