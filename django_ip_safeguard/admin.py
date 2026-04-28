@@ -8,6 +8,7 @@ from django_ip_safeguard.models import (
     IpBanRecord,
     IpGeoPoolStatus,
     IpGuardPolicy,
+    IpGuardPolicySnapshot,
     IpReputationHistory,
     ScheduledTask,
     TaskExecutionLog,
@@ -21,14 +22,19 @@ from django_ip_safeguard.services.policy_service import invalidate_policy_cache
 class IpGuardPolicyAdmin(ModelAdmin):
     list_display = (
         "name",
+        "priority",
         "enabled",
         "risk_score_threshold",
+        "medium_action",
+        "high_action",
         "rate_limit_per_minute",
         "fail_open",
         "updated_at",
     )
-    search_fields = ("name",)
+    list_filter = ("enabled", "medium_action", "high_action")
+    search_fields = ("name", "match_host_regex")
     list_filter_submit = True
+    ordering = ("priority", "name")
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -37,6 +43,17 @@ class IpGuardPolicyAdmin(ModelAdmin):
     def delete_model(self, request, obj):
         super().delete_model(request, obj)
         invalidate_policy_cache()
+
+
+@admin.register(IpGuardPolicySnapshot)
+class IpGuardPolicySnapshotAdmin(ModelAdmin):
+    list_display = ("policy", "actor", "created_at")
+    list_filter = ("policy", "created_at")
+    search_fields = ("policy__name", "actor__username")
+    readonly_fields = ("policy", "actor", "before_json", "after_json", "created_at")
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(IpGeoPoolStatus)

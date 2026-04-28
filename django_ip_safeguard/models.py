@@ -168,8 +168,67 @@ class ApiKeyUsageLog(models.Model):
 
 
 class IpGuardPolicy(models.Model):
+    """IP 防护策略（支持多策略路由与分级动作）。"""
+
+    ACTION_ALLOW = "allow"
+    ACTION_LOG_ONLY = "log_only"
+    ACTION_RATE_LIMIT = "rate_limit"
+    ACTION_CHALLENGE = "challenge"
+    ACTION_BLOCK = "block"
+    ACTION_BAN = "ban"
+    ACTION_CHOICES = [
+        (ACTION_ALLOW, _("放行")),
+        (ACTION_LOG_ONLY, _("仅记录")),
+        (ACTION_RATE_LIMIT, _("限流")),
+        (ACTION_CHALLENGE, _("挑战/二次校验")),
+        (ACTION_BLOCK, _("拦截")),
+        (ACTION_BAN, _("拦截并封禁")),
+    ]
 
     name = models.CharField(_("策略名"), max_length=64, unique=True, default="default")
+    priority = models.IntegerField(
+        _("匹配优先级"),
+        default=10_000,
+        help_text=_("数值越小越优先匹配；default 策略请保持较大值作为兜底"),
+    )
+    match_host_regex = models.CharField(
+        _("Host 正则"),
+        max_length=256,
+        blank=True,
+        default="",
+        help_text=_("空表示不限制；匹配 request.get_host() 去掉端口后的主机名"),
+    )
+    match_path_prefixes = models.JSONField(_("路径前缀列表"), default=list, blank=True)
+    match_methods = models.JSONField(
+        _("HTTP 方法列表"),
+        default=list,
+        blank=True,
+        help_text=_("空表示任意方法；如 [\"GET\",\"POST\"]"),
+    )
+    tier_thresholds = models.JSONField(
+        _("分级阈值"),
+        default=dict,
+        blank=True,
+        help_text=_('示例 {"medium": 40, "high": 70}；high 缺省时用风险阈值 risk_score_threshold'),
+    )
+    signal_weights = models.JSONField(
+        _("信号权重"),
+        default=dict,
+        blank=True,
+        help_text=_('如 {"risk_score":1.0,"tag_blocked":50}；空则使用内置默认'),
+    )
+    medium_action = models.CharField(
+        _("中风险动作"),
+        max_length=32,
+        choices=ACTION_CHOICES,
+        default=ACTION_BLOCK,
+    )
+    high_action = models.CharField(
+        _("高风险动作"),
+        max_length=32,
+        choices=ACTION_CHOICES,
+        default=ACTION_BAN,
+    )
     enabled = models.BooleanField(_("启用防护"), default=True)
     risk_score_threshold = models.IntegerField(_("风险阈值"), default=70)
     blocked_risk_tags = models.JSONField(_("风险标签黑名单"), default=list, blank=True)
@@ -206,6 +265,40 @@ class IpGuardPolicy(models.Model):
     class Meta:
         verbose_name = _("IP防护策略")
         verbose_name_plural = _("IP防护策略")
+        ordering = ["priority", "name"]
+
+
+class IpGuardPolicySnapshot(models.Model):
+    """策略变更快照，供审计与回滚。"""
+
+    policy = models.ForeignKey(
+        IpGuardPolicy,
+        on_delete=models.CASCADE,
+        related_name="snapshots",
+        verbose_name=_("策略"),
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ip_guard_policy_snapshots",
+        verbose_name=_("操作人"),
+    )
+    before_json = models.JSONField(_("变更前"), default=dict, blank=True)
+    after_json = models.JSONField(_("变更后"), default=dict, blank=True)
+    created_at = models.DateTimeField(_("创建时间"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("IP策略变更快照")
+        verbose_name_plural = _("IP策略变更快照")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["policy", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Snapshot({self.policy.name} @ {self.created_at})"
 
 
 class IpGeoPoolStatus(models.Model):

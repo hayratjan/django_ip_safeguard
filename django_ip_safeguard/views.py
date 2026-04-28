@@ -28,6 +28,7 @@ from django_ip_safeguard.models import (
     IpBanRecord,
     IpGeoPoolStatus,
     IpGuardPolicy,
+    IpGuardPolicySnapshot,
     ScheduledTask,
     TaskExecutionLog,
     UserProfile,
@@ -367,33 +368,7 @@ def policy_view(request: HttpRequest) -> JsonResponse:
 
     policy, _created = IpGuardPolicy.objects.get_or_create(name="default")
     if request.method == "GET":
-        return api_success(
-            {
-                "name": policy.name,
-                "enabled": policy.enabled,
-                "risk_score_threshold": policy.risk_score_threshold,
-                "blocked_risk_tags": policy.blocked_risk_tags,
-                "allowed_countries": policy.allowed_countries,
-                "blocked_countries": policy.blocked_countries,
-                "ip_whitelist": policy.ip_whitelist,
-                "ip_blacklist": policy.ip_blacklist,
-                "rate_limit_per_minute": policy.rate_limit_per_minute,
-                "fail_open": policy.fail_open,
-                "fail_open_path_prefixes": policy.fail_open_path_prefixes,
-                "fail_close_path_prefixes": policy.fail_close_path_prefixes,
-                "block_status_code": policy.block_status_code,
-                "cache_ttl": policy.cache_ttl,
-                "ban_ttl": policy.ban_ttl,
-                "use_db_log": policy.use_db_log,
-                "china_pool_rule": getattr(policy, "china_pool_rule", "off"),
-                "international_pool_rule": getattr(policy, "international_pool_rule", "off"),
-                "updated_at": policy.updated_at.isoformat(),
-                "pool_feed_urls": {
-                    "geo_china_pool_url": get_settings().geo_china_pool_url,
-                    "geo_international_pool_url": get_settings().geo_international_pool_url,
-                },
-            }
-        )
+        return api_success(_serialize_policy(policy))
 
     try:
         payload = _load_json_body(request)
@@ -409,6 +384,70 @@ def policy_view(request: HttpRequest) -> JsonResponse:
             return api_error(_("rate_limit_per_minute 范围为 0～100000（0 表示关闭）"), code=4006, status=400)
         policy.rate_limit_per_minute = rl
 
+    err = _apply_policy_payload(policy, payload)
+    if err is not None:
+        return err
+
+    before_snapshot = _serialize_policy(policy, with_meta=False)
+    policy.save()
+    after_snapshot = _serialize_policy(policy, with_meta=False)
+    try:
+        IpGuardPolicySnapshot.objects.create(
+            policy=policy,
+            actor=request.user if getattr(request.user, "is_authenticated", False) else None,
+            before_json=before_snapshot,
+            after_json=after_snapshot,
+        )
+    except Exception:  # noqa: BLE001
+        # 快照失败不影响策略保存主流程
+        pass
+    invalidate_policy_cache()
+    return api_success({"name": policy.name}, message=_("策略已更新"))
+
+
+_POLICY_ACTION_VALUES = frozenset({"allow", "log_only", "rate_limit", "challenge", "block", "ban"})
+
+
+def _serialize_policy(policy, with_meta: bool = True) -> dict:
+    data = {
+        "name": policy.name,
+        "enabled": policy.enabled,
+        "priority": int(getattr(policy, "priority", 10000) or 10000),
+        "match_host_regex": getattr(policy, "match_host_regex", "") or "",
+        "match_path_prefixes": list(getattr(policy, "match_path_prefixes", []) or []),
+        "match_methods": list(getattr(policy, "match_methods", []) or []),
+        "tier_thresholds": dict(getattr(policy, "tier_thresholds", {}) or {}),
+        "signal_weights": dict(getattr(policy, "signal_weights", {}) or {}),
+        "medium_action": getattr(policy, "medium_action", "block") or "block",
+        "high_action": getattr(policy, "high_action", "ban") or "ban",
+        "risk_score_threshold": policy.risk_score_threshold,
+        "blocked_risk_tags": policy.blocked_risk_tags,
+        "allowed_countries": policy.allowed_countries,
+        "blocked_countries": policy.blocked_countries,
+        "ip_whitelist": policy.ip_whitelist,
+        "ip_blacklist": policy.ip_blacklist,
+        "rate_limit_per_minute": policy.rate_limit_per_minute,
+        "fail_open": policy.fail_open,
+        "fail_open_path_prefixes": policy.fail_open_path_prefixes,
+        "fail_close_path_prefixes": policy.fail_close_path_prefixes,
+        "block_status_code": policy.block_status_code,
+        "cache_ttl": policy.cache_ttl,
+        "ban_ttl": policy.ban_ttl,
+        "use_db_log": policy.use_db_log,
+        "china_pool_rule": getattr(policy, "china_pool_rule", "off"),
+        "international_pool_rule": getattr(policy, "international_pool_rule", "off"),
+    }
+    if with_meta:
+        data["updated_at"] = policy.updated_at.isoformat()
+        data["pool_feed_urls"] = {
+            "geo_china_pool_url": get_settings().geo_china_pool_url,
+            "geo_international_pool_url": get_settings().geo_international_pool_url,
+        }
+    return data
+
+
+def _apply_policy_payload(policy, payload: dict):
+    """把 JSON payload 校验后写到 policy 实例上；出错返回 JsonResponse，成功返回 None。"""
     list_json_fields = {
         "blocked_risk_tags",
         "allowed_countries",
@@ -417,9 +456,20 @@ def policy_view(request: HttpRequest) -> JsonResponse:
         "ip_blacklist",
         "fail_open_path_prefixes",
         "fail_close_path_prefixes",
+        "match_path_prefixes",
+        "match_methods",
     }
+    dict_json_fields = {"tier_thresholds", "signal_weights"}
     editable_fields = [
         "enabled",
+        "priority",
+        "match_host_regex",
+        "match_path_prefixes",
+        "match_methods",
+        "tier_thresholds",
+        "signal_weights",
+        "medium_action",
+        "high_action",
         "risk_score_threshold",
         "blocked_risk_tags",
         "allowed_countries",
@@ -442,6 +492,8 @@ def policy_view(request: HttpRequest) -> JsonResponse:
         val = payload[field]
         if field in list_json_fields and not isinstance(val, list):
             return api_error(_("字段 %(field)s 必须为 JSON 数组") % {"field": field}, code=4005, status=400)
+        if field in dict_json_fields and not isinstance(val, dict):
+            return api_error(_("字段 %(field)s 必须为 JSON 对象") % {"field": field}, code=4005, status=400)
         if field in {"allowed_countries", "blocked_countries"}:
             normalized, err = _normalize_country_codes(val, field)
             if err:
@@ -452,8 +504,15 @@ def policy_view(request: HttpRequest) -> JsonResponse:
             if err:
                 return err
             val = normalized
-        elif field in {"blocked_risk_tags", "fail_open_path_prefixes", "fail_close_path_prefixes"}:
+        elif field in {
+            "blocked_risk_tags",
+            "fail_open_path_prefixes",
+            "fail_close_path_prefixes",
+            "match_path_prefixes",
+        }:
             val = _normalize_string_list(val)
+        elif field == "match_methods":
+            val = [str(x).strip().upper() for x in val if str(x).strip()]
         elif field in {"china_pool_rule", "international_pool_rule"}:
             val = str(val).strip().lower()
             if val not in GEO_POOL_RULE_CHOICES:
@@ -462,10 +521,24 @@ def policy_view(request: HttpRequest) -> JsonResponse:
                     code=4012,
                     status=400,
                 )
+        elif field in {"medium_action", "high_action"}:
+            val = str(val).strip().lower()
+            if val not in _POLICY_ACTION_VALUES:
+                return api_error(
+                    _("字段 %(field)s 须为 %(values)s 之一") % {
+                        "field": field,
+                        "values": ", ".join(sorted(_POLICY_ACTION_VALUES)),
+                    },
+                    code=4013,
+                    status=400,
+                )
+        elif field == "priority":
+            try:
+                val = int(val)
+            except (TypeError, ValueError):
+                return api_error(_("priority 必须为整数"), code=4014, status=400)
         setattr(policy, field, val)
-    policy.save()
-    invalidate_policy_cache()
-    return api_success({"name": policy.name}, message=_("策略已更新"))
+    return None
 
 
 @csrf_protect
