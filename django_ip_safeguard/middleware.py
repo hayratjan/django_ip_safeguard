@@ -34,14 +34,14 @@ from django_ip_safeguard.services.policy_service import (
     load_effective_policy,
     start_policy_invalidate_subscriber,
 )
+from django_ip_safeguard.services.provider_factory import build_provider
+from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
+from django_ip_safeguard.types import IpIntel
 
 
 def _audit_request_meta(request):
     """审计日志附带登录用户与 HTTP 方法。"""
     return {"user": getattr(request, "user", None), "method": getattr(request, "method", "") or ""}
-from django_ip_safeguard.services.provider_factory import build_provider
-from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
-from django_ip_safeguard.types import IpIntel
 
 logger = logging.getLogger(__name__)
 

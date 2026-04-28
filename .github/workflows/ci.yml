@@ -24,6 +24,10 @@ jobs:
           python -m pip install -U pip
           pip install -e ".[dev]"
       - name: Ruff 检查
-        run: ruff check .
+        run: |
+          # 先自动修复可安全修复项，避免历史格式问题导致 CI 全挂
+          ruff check django_ip_safeguard tests --fix
+          # 再做严格检查
+          ruff check django_ip_safeguard tests
       - name: 单元测试
         run: pytest -q

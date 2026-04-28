@@ -1,11 +1,9 @@
-import json
 import logging
 import time
-from collections import defaultdict
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
 from threading import Lock
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 

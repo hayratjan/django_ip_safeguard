@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Optional, Set
+from typing import Dict, Optional, Set
 
 from django_ip_safeguard.types import IpIntel
 

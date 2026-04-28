@@ -524,6 +524,7 @@ class ScheduledTask(models.Model):
 
     def calculate_next_run(self):
         from datetime import timedelta
+
         from croniter import croniter
         now = timezone.now()
 
@@ -556,6 +557,7 @@ class ScheduledTask(models.Model):
 
     def execute(self):
         from io import StringIO
+
         from django.core.management import call_command
 
         result = {

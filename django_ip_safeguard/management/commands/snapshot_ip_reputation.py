@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
-from django.db.models import Count, Q, F
+from django.db.models import Count
 from django.utils import timezone
 
 from django_ip_safeguard.conf import get_settings

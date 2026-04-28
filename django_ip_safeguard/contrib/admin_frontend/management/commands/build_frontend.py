@@ -1,4 +1,3 @@
-import os
 import subprocess
 from pathlib import Path
 
@@ -36,7 +35,7 @@ class Command(BaseCommand):
             if options["watch"]:
                 build_cmd.append("--watch")
 
-            result = subprocess.run(
+            subprocess.run(
                 build_cmd,
                 cwd=frontend_dir,
                 check=True,

@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-from datetime import timedelta
 from typing import Dict, List, Optional
 
 from django.utils import timezone
@@ -93,8 +92,8 @@ class TaskScheduler:
         thread.start()
 
     def _execute_task(self, task) -> None:
+
         from django_ip_safeguard.models import TaskExecutionLog
-        import time as time_module
 
         task.last_run_status = "running"
         task.save(update_fields=["last_run_status"])

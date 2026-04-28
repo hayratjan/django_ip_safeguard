@@ -1,4 +1,4 @@
-from django_ip_safeguard.services.audit_service import mask_ip, log_access_decision
+from django_ip_safeguard.services.audit_service import log_access_decision, mask_ip
 from django_ip_safeguard.types import IpIntel
 
 

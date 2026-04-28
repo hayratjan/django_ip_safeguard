@@ -1,9 +1,7 @@
 import json
 import logging
-import time
-from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from django_ip_safeguard.conf import IpGuardSettings

@@ -1,6 +1,7 @@
 """JWT 签发、解析与刷新逻辑的单元测试（不依赖真实数据库）。"""
 
 from types import SimpleNamespace
+
 import jwt as pyjwt
 import pytest
 

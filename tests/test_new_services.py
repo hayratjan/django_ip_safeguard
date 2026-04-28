@@ -1,6 +1,6 @@
+from django_ip_safeguard.services.asn_lookup import AsnLookupService
 from django_ip_safeguard.services.provider_chain import ChainedProvider
 from django_ip_safeguard.services.provider_http import DummyIpIntelProvider
-from django_ip_safeguard.services.asn_lookup import AsnLookupService
 from django_ip_safeguard.types import IpIntel
 
 

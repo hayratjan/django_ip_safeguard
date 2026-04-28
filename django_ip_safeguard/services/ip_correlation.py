@@ -1,8 +1,7 @@
 import ipaddress
-import json
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from django_ip_safeguard.conf import IpGuardSettings
 from django_ip_safeguard.services.cache import RedisCacheService

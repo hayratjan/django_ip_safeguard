@@ -1,26 +1,32 @@
 from django.urls import path, re_path
 
+from django_ip_safeguard.contrib.admin_frontend.views import (
+    serve_frontend_build_file,
+    serve_frontend_spa,
+    serve_frontend_static_file,
+)
 from django_ip_safeguard.views import (
     access_log_export_view,
     access_log_list_view,
     access_log_user_summary_view,
     api_key_create_view,
     api_key_list_view,
-    api_key_logs_view,
     api_key_login_view,
+    api_key_logs_view,
     api_key_revoke_view,
     auth_me_view,
+    ban_ip_view,
+    ban_list_view,
     change_email_view,
     change_password_view,
     csrf_view,
-    ban_ip_view,
-    ban_list_view,
     dashboard_api_view,
+    django_admin_group_list_view,
+    django_admin_user_detail_view,
+    django_admin_users_collection_view,
     geo_pools_status_view,
     geo_pools_sync_view,
     health_view,
-    metrics_api_view,
-    metrics_reset_view,
     i18n_lang_list_view,
     i18n_lang_switch_view,
     jwt_login_view,
@@ -28,6 +34,8 @@ from django_ip_safeguard.views import (
     jwt_refresh_view,
     login_view,
     logout_view,
+    metrics_api_view,
+    metrics_reset_view,
     policies_collection_view,
     policy_detail_by_name_view,
     policy_snapshot_rollback_view,
@@ -37,9 +45,6 @@ from django_ip_safeguard.views import (
     scheduled_task_detail_view,
     scheduled_task_list_view,
     scheduled_task_run_view,
-    django_admin_group_list_view,
-    django_admin_user_detail_view,
-    django_admin_users_collection_view,
     security_audit_log_view,
     system_settings_view,
     two_factor_disable_view,
@@ -51,11 +56,6 @@ from django_ip_safeguard.views import (
     user_profile_view,
     user_stats_chart_view,
     verify_email_view,
-)
-from django_ip_safeguard.contrib.admin_frontend.views import (
-    serve_frontend_build_file,
-    serve_frontend_spa,
-    serve_frontend_static_file,
 )
 
 app_name = "django_ip_safeguard"
