@@ -167,7 +167,8 @@ IP_GUARD_TRUSTED_PROXY_CIDRS = ("127.0.0.1/32",)
 IP_GUARD_JWT_SECRET_KEY = "test-jwt-secret-key-at-least-32-bytes-long"
 IP_GUARD_IP_MASK_ENABLED = False
 
-IP_GUARD_RESEND_API_KEY = "REMOVED_RESEND_KEY"
+# Resend 密钥仅允许从环境变量读取，禁止明文硬编码
+IP_GUARD_RESEND_API_KEY = os.getenv("IP_GUARD_RESEND_API_KEY", "")
 IP_GUARD_EMAIL_FROM = "IP Guard <onboarding@resend.dev>"
 IP_GUARD_FRONTEND_BASE_URL = "http://localhost:5173"
 IP_GUARD_PASSWORD_MAX_AGE_DAYS = 0
