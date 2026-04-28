@@ -1,0 +1,6 @@
+# 使用说明：先在仓库根目录执行 `python3 -m build` 生成 ../dist/*.whl
+# 需 Python >= 3.10（与 pyproject.toml 一致）
+# 在 demo2 目录、已激活的 venv 中安装：
+#   pip install ../dist/django_ip_safeguard-0.2.1-py3-none-any.whl
+# 或与本文同目录相对路径直接装 wheel：
+../dist/django_ip_safeguard-0.2.1-py3-none-any.whl

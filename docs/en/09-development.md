@@ -58,6 +58,29 @@ cd demo_project
 python manage.py runserver 8000
 ```
 
+### 6. Verify pip install with **demo2** (optional)
+
+Build the wheel from the repository root:
+
+```bash
+python -m build   # produces dist/django_ip_safeguard-<version>-py3-none-any.whl
+```
+
+Use the **demo2** sample so dependencies come only from the wheel (similar to PyPI):
+
+```bash
+cd demo2
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install ../dist/django_ip_safeguard-0.2.1-py3-none-any.whl
+# or pip install -r requirements-from-dist.txt (adjust wheel version/path if needed)
+python manage.py migrate
+python manage.py check
+python manage.py runserver 8000
+```
+
+In `demo2/demo2/settings.py`, `LOCALE_PATHS` points at the installed package’s `locale` directory (no hard-coded path to a source checkout).
+
 ## Project Structure
 
 ```

@@ -4,7 +4,11 @@ Django settings for demo2 project.
 
 from pathlib import Path
 
+import django_ip_safeguard
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+# 无论 pip 安装还是源码目录，locale 均在包内（勿写死仓库相对路径）
+_PLUGIN_ROOT = Path(django_ip_safeguard.__file__).resolve().parent
 
 SECRET_KEY = 'django-insecure-35m(74*8@-o8!hb_45e%m57p&a_*7xuebfbt0ykg#jd%1bx6s9'
 
@@ -78,9 +82,8 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# 插件翻译文件（与 pip 包内 locale 对齐）
 LOCALE_PATHS = [
-    BASE_DIR.parent / 'django_ip_safeguard' / 'locale',
+    _PLUGIN_ROOT / 'locale',
 ]
 
 # 本地联调：浏览器访问 8000、可选 Vite 5173 等

@@ -57,6 +57,29 @@ cd demo_project
 python manage.py runserver 8000
 ```
 
+### 6. 用 demo2 验证 pip 打包安装（可选）
+
+仓库根目录先打包 wheel：
+
+```bash
+python -m build   # 生成 dist/django_ip_safeguard-<版本>-py3-none-any.whl
+```
+
+使用示例工程 **demo2**（依赖仅从 wheel 拉取，模拟 PyPI 安装）：
+
+```bash
+cd demo2
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install ../dist/django_ip_safeguard-0.2.1-py3-none-any.whl
+# 或 pip install -r requirements-from-dist.txt（需在文件中核对 wheel 版本路径）
+python manage.py migrate
+python manage.py check
+python manage.py runserver 8000
+```
+
+`demo2/demo2/settings.py` 中 `LOCALE_PATHS` 已指向已安装包内的 `locale`，无需再写仓库源码相对路径。
+
 ## 项目结构
 
 ```
