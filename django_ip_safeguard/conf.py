@@ -106,6 +106,10 @@ class IpGuardSettings:
     high_action: str = "ban"
     challenge_status_code: int = 403
 
+    # Redis 决策计数（/api/metrics/）与单行 JSON 结构化日志
+    metrics_redis_enabled: bool = True
+    structured_decision_logging: bool = False
+
 
 def _to_tuple(value: Optional[object]) -> Tuple[str, ...]:
     if value is None:
@@ -324,4 +328,8 @@ def get_settings() -> IpGuardSettings:
         medium_action="block",
         high_action="ban",
         challenge_status_code=int(getattr(settings, "IP_GUARD_CHALLENGE_STATUS_CODE", 403)),
+        metrics_redis_enabled=bool(getattr(settings, "IP_GUARD_METRICS_REDIS_ENABLED", True)),
+        structured_decision_logging=bool(
+            getattr(settings, "IP_GUARD_STRUCTURED_DECISION_LOGGING", False)
+        ),
     )

@@ -48,6 +48,19 @@
         </div>
       </div>
 
+      <p v-if="metricsNote" class="metrics-note">{{ metricsNote }}</p>
+      <div v-if="metricsPairs.length" class="metrics-live section-card">
+        <div class="section-header">
+          <h4 class="section-title">{{ t('dashboard.redisMetrics') }}</h4>
+        </div>
+        <div class="metrics-grid">
+          <div v-for="item in metricsPairs" :key="item.k" class="metric-chip">
+            <span class="mk">{{ item.k }}</span>
+            <strong>{{ item.v }}</strong>
+          </div>
+        </div>
+      </div>
+
       <div class="map-section">
         <DashboardWorldIpMap :distribution="data.country_distribution || []" @country-click="onCountryClick" />
       </div>
@@ -155,7 +168,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { dashboardApi } from "../api";
+import { dashboardApi, metricsApi } from "../api";
 import DashboardRecentRecords from "../components/DashboardRecentRecords.vue";
 import DashboardWorldIpMap from "../components/DashboardWorldIpMap.vue";
 
@@ -164,16 +177,35 @@ const router = useRouter();
 
 const data = ref({});
 const loading = ref(false);
+const metricsPairs = ref([]);
+const metricsNote = ref("");
 
 const decisionRows = computed(() => {
   const dist = data.value.decision_distribution || {};
   return Object.keys(dist).map((k) => ({ k, v: dist[k] }));
 });
 
+const loadMetrics = async () => {
+  metricsPairs.value = [];
+  metricsNote.value = "";
+  try {
+    const m = await metricsApi();
+    metricsNote.value = t("dashboard.redisMetricsHint");
+    const c = m.redis_counters || {};
+    metricsPairs.value = Object.keys(c)
+      .sort()
+      .slice(0, 48)
+      .map((k) => ({ k, v: c[k] }));
+  } catch {
+    metricsPairs.value = [];
+  }
+};
+
 const load = async () => {
   loading.value = true;
   try {
     data.value = await dashboardApi();
+    await loadMetrics();
   } finally {
     loading.value = false;
   }
@@ -366,5 +398,41 @@ onMounted(load);
   .stats-row {
     grid-template-columns: 1fr;
   }
+}
+
+.metrics-note {
+  font-size: 12px;
+  color: var(--ip-text-secondary, #64748b);
+  margin: -8px 0 12px;
+}
+
+.metrics-live {
+  margin-bottom: 20px;
+}
+
+.metrics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.metric-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.08);
+  font-size: 12px;
+}
+
+.metric-chip .mk {
+  color: #64748b;
+  font-family: ui-monospace, monospace;
+}
+
+.metric-chip strong {
+  font-size: 14px;
+  color: var(--ip-text, #0f172a);
 }
 </style>

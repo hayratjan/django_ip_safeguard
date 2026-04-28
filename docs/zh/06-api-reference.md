@@ -302,16 +302,39 @@ JWT 令牌登录。
 
 ### POST /api/policy/
 
-更新 IP 策略。
+更新 **默认策略**（`name="default"`）。请求体字段与 `IpGuardPolicy` ORM 对齐（含 `priority`、`match_*`、`tier_thresholds`、`signal_weights`、`medium_action`、`high_action` 等），详见安装文档「策略引擎 v2」。
 
-**请求：**
-```json
-{
-  "rate_limit_enabled": true,
-  "rate_limit_requests": 100,
-  "blocked_countries": ["CN"]
-}
-```
+保存成功后会写入 `IpGuardPolicySnapshot`（变更前 / 变更后 JSON），并通过 Redis 广播使各 worker 策略缓存失效。
+
+### GET /api/metrics/
+
+返回 **Redis 聚合决策计数**（中间件每次分支写入 `ip_guard:metrics:counters` HASH）以及进程内 `MetricsCollector` 摘要。需 `django_ip_safeguard.view_ipguardpolicy`。
+
+响应 `data` 含：`redis_counters`（字段名如 `total`、`d_allow`、`d_block`、`b_blacklist`、`b_risk`、`a_ban`、`p_default`…）、`in_process_summary`、`metrics_redis_enabled`、`structured_decision_logging`。
+
+### POST /api/metrics/reset/
+
+清空 Redis 决策计数 HASH。需 `django_ip_safeguard.change_ipguardpolicy`。
+
+### GET /api/policies/
+
+列出全部策略行摘要（`name`、`priority`、`enabled`、`medium_action`、`high_action`、`updated_at`）。
+
+### POST /api/policies/
+
+新建策略行，JSON：`{"name":"my-api"}`（名称仅允许 `[\w.-]+`，最长 64）。
+
+### `GET/POST /api/policies/<name>/`
+
+按策略名读写单行策略；POST 行为与 ``POST /api/policy/`` 相同（含快照）。
+
+### GET /api/policy/snapshots/
+
+分页快照列表。查询参数：`policy`（策略名）、`page`、`page_size`（最大 100）。
+
+### `POST /api/policy/snapshots/<id>/rollback/`
+
+将对应策略 **恢复为该快照记录中的「变更前」字段**（即 `before_json`）。需 `change_ipguardpolicy`；成功后再写一条新快照。
 
 ## 封禁管理 API
 

@@ -1,7 +1,72 @@
 <template>
   <div class="page-card">
-    <h3>{{ t('policy.title') }}</h3>
+    <div class="policy-head">
+      <h3>{{ t('policy.title') }}</h3>
+      <router-link v-if="canViewPolicy" class="history-link" to="/policy-history">{{ t('nav.policyHistory') }}</router-link>
+    </div>
+
+    <div class="policy-list-wrap">
+      <el-table
+        :data="policies"
+        size="small"
+        border
+        highlight-current-row
+        max-height="240"
+        :empty-text="t('policy.noPolicies')"
+        @row-click="onSelectPolicy"
+      >
+        <el-table-column prop="name" :label="t('policy.colName')" min-width="120" />
+        <el-table-column prop="priority" :label="t('policy.colPriority')" width="90" />
+        <el-table-column prop="enabled" :label="t('policy.colEnabled')" width="80">
+          <template #default="{ row }">{{ row.enabled ? '✓' : '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="medium_action" :label="t('policy.colMedium')" width="100" />
+        <el-table-column prop="high_action" :label="t('policy.colHigh')" width="100" />
+      </el-table>
+      <div class="policy-toolbar">
+        <el-button size="small" :loading="loadingList" @click="loadPoliciesList">{{ t('policy.refreshPolicies') }}</el-button>
+        <el-button v-if="canEditPolicy" size="small" type="primary" @click="showCreate = true">{{ t('policy.newPolicy') }}</el-button>
+        <span class="hint">{{ t('policy.editingLabel') }} <code>{{ currentPolicyName }}</code></span>
+      </div>
+    </div>
+
+    <el-dialog v-model="showCreate" :title="t('policy.newPolicy')" width="420px" @closed="newPolicyName = ''">
+      <el-input v-model="newPolicyName" :placeholder="t('policy.newPolicyPlaceholder')" maxlength="64" show-word-limit />
+      <template #footer>
+        <el-button @click="showCreate = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="creating" @click="onCreatePolicy">{{ t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
     <el-form :model="form" label-width="180px">
+      <el-divider content-position="left">{{ t('policy.v2Divider') }}</el-divider>
+      <el-form-item :label="t('policy.priority')"><el-input-number v-model="form.priority" :min="1" :max="999999" /></el-form-item>
+      <el-form-item :label="t('policy.matchHost')">
+        <el-input v-model="form.match_host_regex" :placeholder="t('policy.matchHostPh')" clearable />
+      </el-form-item>
+      <el-form-item :label="t('policy.matchPaths')">
+        <el-select v-model="form.match_path_prefixes" multiple filterable allow-create style="width: 100%" />
+      </el-form-item>
+      <el-form-item :label="t('policy.matchMethods')">
+        <el-select v-model="form.match_methods" multiple filterable allow-create style="width: 100%" />
+      </el-form-item>
+      <el-form-item :label="t('policy.mediumAction')">
+        <el-select v-model="form.medium_action" style="width: 100%">
+          <el-option v-for="a in actionChoices" :key="a" :label="a" :value="a" />
+        </el-select>
+      </el-form-item>
+      <el-form-item :label="t('policy.highAction')">
+        <el-select v-model="form.high_action" style="width: 100%">
+          <el-option v-for="a in actionChoices" :key="a" :label="a" :value="a" />
+        </el-select>
+      </el-form-item>
+      <el-form-item :label="t('policy.tierJson')">
+        <el-input v-model="tierJson" type="textarea" :rows="2" :placeholder="t('policy.tierJsonPh')" />
+      </el-form-item>
+      <el-form-item :label="t('policy.weightsJson')">
+        <el-input v-model="weightsJson" type="textarea" :rows="2" :placeholder="t('policy.weightsJsonPh')" />
+      </el-form-item>
+
       <el-form-item :label="t('policy.enabled')"><el-switch v-model="form.enabled" /></el-form-item>
       <el-form-item :label="t('policy.riskThreshold')"><el-input-number v-model="form.risk_score_threshold" :min="0" :max="100" /></el-form-item>
       <el-form-item :label="t('policy.blockedRiskTags')">
@@ -146,12 +211,30 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
-import { getGeoPoolsStatusApi, getPolicyApi, syncGeoPoolsApi, updatePolicyApi } from "../api";
+import {
+  createPolicyApi,
+  getGeoPoolsStatusApi,
+  getPolicyByNameApi,
+  listPoliciesApi,
+  syncGeoPoolsApi,
+  updatePolicyByNameApi,
+} from "../api";
 import { useAuthStore } from "../stores/auth";
 
 const { t } = useI18n();
 
+const actionChoices = ["allow", "log_only", "rate_limit", "challenge", "block", "ban"];
+
 const emptyForm = () => ({
+  name: "default",
+  priority: 10000,
+  match_host_regex: "",
+  match_path_prefixes: [],
+  match_methods: [],
+  tier_thresholds: {},
+  signal_weights: {},
+  medium_action: "block",
+  high_action: "ban",
   enabled: true,
   risk_score_threshold: 70,
   blocked_risk_tags: [],
@@ -173,11 +256,53 @@ const emptyForm = () => ({
 });
 
 const form = reactive(emptyForm());
+const tierJson = ref("{}");
+const weightsJson = ref("{}");
 const poolMeta = reactive({ pools: [] });
 const saving = ref(false);
 const syncing = ref(false);
+const loadingList = ref(false);
+const creating = ref(false);
+const policies = ref([]);
+const currentPolicyName = ref("default");
+const showCreate = ref(false);
+const newPolicyName = ref("");
+
 const authStore = useAuthStore();
 const canEditPolicy = computed(() => authStore.hasPerm("django_ip_safeguard.change_ipguardpolicy"));
+const canViewPolicy = computed(() => authStore.hasPerm("django_ip_safeguard.view_ipguardpolicy"));
+
+const syncTierWeightsFromInputs = () => {
+  try {
+    form.tier_thresholds = JSON.parse(tierJson.value || "{}");
+  } catch {
+    throw new Error(t("policy.badJsonTier"));
+  }
+  try {
+    form.signal_weights = JSON.parse(weightsJson.value || "{}");
+  } catch {
+    throw new Error(t("policy.badJsonWeights"));
+  }
+};
+
+const loadPoliciesList = async () => {
+  loadingList.value = true;
+  try {
+    const data = await listPoliciesApi();
+    policies.value = data.items || [];
+  } catch {
+    policies.value = [];
+  } finally {
+    loadingList.value = false;
+  }
+};
+
+const loadDetail = async (name) => {
+  const data = await getPolicyByNameApi(name);
+  Object.assign(form, emptyForm(), data);
+  tierJson.value = JSON.stringify(form.tier_thresholds || {}, null, 0);
+  weightsJson.value = JSON.stringify(form.signal_weights || {}, null, 0);
+};
 
 const loadPoolStatus = async () => {
   try {
@@ -189,36 +314,73 @@ const loadPoolStatus = async () => {
 };
 
 const reload = async () => {
-  Object.assign(form, emptyForm(), await getPolicyApi());
+  await loadPoliciesList();
+  await loadDetail(currentPolicyName.value);
   await loadPoolStatus();
 };
 
+const onSelectPolicy = (row) => {
+  if (!row?.name) return;
+  currentPolicyName.value = row.name;
+  loadDetail(row.name).catch(() => {});
+};
+
+const onCreatePolicy = async () => {
+  const name = (newPolicyName.value || "").trim();
+  if (!name) {
+    ElMessage.warning(t("policy.newPolicyPlaceholder"));
+    return;
+  }
+  creating.value = true;
+  try {
+    await createPolicyApi({ name });
+    ElMessage.success(t("common.success"));
+    showCreate.value = false;
+    newPolicyName.value = "";
+    await loadPoliciesList();
+    currentPolicyName.value = name;
+    await loadDetail(name);
+  } finally {
+    creating.value = false;
+  }
+};
+
+onMounted(reload);
+
 const onSyncPools = async () => {
   if (!canEditPolicy.value) {
-    ElMessage.warning(t('policy.needChangePerm'));
+    ElMessage.warning(t("policy.needChangePerm"));
     return;
   }
   syncing.value = true;
   try {
     await syncGeoPoolsApi();
-    ElMessage.success(t('common.success'));
+    ElMessage.success(t("common.success"));
     await loadPoolStatus();
   } finally {
     syncing.value = false;
   }
 };
 
-onMounted(reload);
-
 const onSave = async () => {
   saving.value = true;
   try {
     if (!canEditPolicy.value) {
-      ElMessage.warning(t('policy.noChangePerm'));
+      ElMessage.warning(t("policy.noChangePerm"));
       return;
     }
-    await updatePolicyApi({ ...form });
-    ElMessage.success(t('common.success'));
+    try {
+      syncTierWeightsFromInputs();
+    } catch (err) {
+      ElMessage.error(err.message || t("common.failed"));
+      return;
+    }
+    const payload = { ...form };
+    delete payload.updated_at;
+    delete payload.pool_feed_urls;
+    delete payload.name;
+    await updatePolicyByNameApi(currentPolicyName.value, payload);
+    ElMessage.success(t("common.success"));
     await reload();
   } finally {
     saving.value = false;
@@ -227,6 +389,25 @@ const onSave = async () => {
 </script>
 
 <style scoped>
+.policy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.history-link {
+  font-size: 14px;
+}
+.policy-list-wrap {
+  margin-bottom: 20px;
+}
+.policy-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
 .hint {
   margin-left: 8px;
   color: #909399;
@@ -242,8 +423,5 @@ const onSave = async () => {
   color: #606266;
   line-height: 1.6;
   word-break: break-all;
-}
-.sync-btn {
-  margin-top: 10px;
 }
 </style>

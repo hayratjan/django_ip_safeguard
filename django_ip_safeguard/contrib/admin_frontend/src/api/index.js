@@ -34,6 +34,17 @@ export const userStatsChartApi = (params) => http.get("/user-stats-chart/", { pa
 export const getPolicyApi = () => http.get("/policy/");
 export const updatePolicyApi = (payload) => http.post("/policy/", payload);
 
+export const metricsApi = () => http.get("/metrics/");
+export const metricsResetApi = () => http.post("/metrics/reset/");
+export const listPoliciesApi = () => http.get("/policies/");
+export const createPolicyApi = (payload) => http.post("/policies/", payload);
+export const getPolicyByNameApi = (name) => http.get(`/policies/${encodeURIComponent(name)}/`);
+export const updatePolicyByNameApi = (name, payload) =>
+  http.post(`/policies/${encodeURIComponent(name)}/`, payload);
+export const listPolicySnapshotsApi = (params) => http.get("/policy/snapshots/", { params });
+export const rollbackPolicySnapshotApi = (snapshotId) =>
+  http.post(`/policy/snapshots/${snapshotId}/rollback/`);
+
 export const getGeoPoolsStatusApi = () => http.get("/geo-pools/status/");
 export const syncGeoPoolsApi = () => http.post("/geo-pools/sync/");
 

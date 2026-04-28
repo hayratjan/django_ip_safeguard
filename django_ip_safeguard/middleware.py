@@ -19,7 +19,7 @@ from django.utils.translation import gettext_lazy as _t
 from django_ip_safeguard.conf import get_settings
 from django_ip_safeguard.services.action_executor import build_response
 from django_ip_safeguard.services.asn_lookup import AsnLookupService
-from django_ip_safeguard.services.audit_service import log_access_decision
+from django_ip_safeguard.services.audit_service import log_access_decision, mask_ip
 from django_ip_safeguard.services.ban_service import ban_ip
 from django_ip_safeguard.services.cache import RedisCacheService
 from django_ip_safeguard.services.circuit_breaker import CircuitBreaker
@@ -130,23 +130,83 @@ class IpGuardMiddleware:
     def _build_block(self, request, runtime_config, *, ip, reason, action="block"):
         return build_response(request, action, reason, ip, runtime_config)
 
+    def _record_skip_path(self, request):
+        """跳过路径：不计 total，仅 skipped_paths / b_skip_path。"""
+        if not self.config.metrics_redis_enabled and not self.config.structured_decision_logging:
+            return
+        try:
+            from django_ip_safeguard.services.decision_metrics import record_decision_counters
+
+            if self.config.metrics_redis_enabled:
+                record_decision_counters(self.config.redis_url, branch="skip_path", allowed=True)
+            if self.config.structured_decision_logging:
+                from django_ip_safeguard.services.structured_decision_log import log_structured_decision
+
+                log_structured_decision(
+                    policy_name="",
+                    branch="skip_path",
+                    allowed=True,
+                    path=request.path,
+                    method=request.method,
+                    ip_masked="",
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _record_observation(self, request, cfg, *, client_ip: str, branch: str, allowed: bool, action=None):
+        """Redis 计数 + 可选单行 JSON 日志。"""
+        policy_name = getattr(cfg, "policy_name", None) or "default"
+        if cfg.metrics_redis_enabled:
+            try:
+                from django_ip_safeguard.services.decision_metrics import record_decision_counters
+
+                record_decision_counters(
+                    cfg.redis_url,
+                    policy_name=policy_name,
+                    branch=branch,
+                    allowed=allowed,
+                    action=action,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        if cfg.structured_decision_logging:
+            try:
+                from django_ip_safeguard.services.structured_decision_log import log_structured_decision
+
+                ip_disp = mask_ip(client_ip, cfg.ip_mask_enabled, cfg.ip_mask_keep_prefix) if client_ip else ""
+                log_structured_decision(
+                    policy_name=policy_name,
+                    branch=branch,
+                    allowed=allowed,
+                    action=action,
+                    path=request.path,
+                    method=request.method,
+                    ip_masked=ip_disp,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
     def __call__(self, request):
         # 跳过路径：在策略加载之前就返回，能力上等同"未启用"
         skip_prefixes = tuple(self.config.skip_path_prefixes or ())
         if skip_prefixes and _path_in(skip_prefixes, request.path):
+            self._record_skip_path(request)
             return self.get_response(request)
 
         runtime_config = load_effective_policy(self.config, request=request)
 
         if not runtime_config.enabled:
+            self._record_observation(request, runtime_config, client_ip="", branch="disabled", allowed=True)
             return self.get_response(request)
 
         client_ip = resolve_client_ip(request, runtime_config.trusted_proxy_cidrs)
         if not client_ip:
+            self._record_observation(request, runtime_config, client_ip="", branch="no_client_ip", allowed=True)
             return self.get_response(request)
 
         wl_hit, _wl_rule = first_matching_rule(client_ip, runtime_config.ip_whitelist)
         if wl_hit:
+            self._record_observation(request, runtime_config, client_ip=client_ip, branch="whitelist", allowed=True)
             return self.get_response(request)
 
         policy_intel = IpIntel(ip=client_ip, country_code="", risk_score=0, risk_tags=[], source="policy")
@@ -164,6 +224,7 @@ class IpGuardMiddleware:
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
+            self._record_observation(request, runtime_config, client_ip=client_ip, branch="blacklist", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=str(reason))
 
         geo_reason = evaluate_geo_ip_pool_rules(client_ip, runtime_config, self.cache_service)
@@ -178,6 +239,7 @@ class IpGuardMiddleware:
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
+            self._record_observation(request, runtime_config, client_ip=client_ip, branch="geo_pool", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=geo_reason)
 
         if self._is_rate_limited(client_ip, runtime_config.rate_limit_per_minute):
@@ -192,6 +254,7 @@ class IpGuardMiddleware:
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
+            self._record_observation(request, runtime_config, client_ip=client_ip, branch="ratelimit", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=reason, action="rate_limit")
 
         if self._is_banned(client_ip):
@@ -206,13 +269,14 @@ class IpGuardMiddleware:
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
             )
+            self._record_observation(request, runtime_config, client_ip=client_ip, branch="banned", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=reason)
 
         ip_intel = self._get_intel_from_cache(client_ip)
         if not ip_intel:
             if not self.circuit_breaker.allow_request():
                 logger.warning("Provider 熔断生效，跳过外部请求。")
-                return self._handle_provider_failed(request, runtime_config)
+                return self._handle_provider_failed(request, runtime_config, client_ip)
 
             lock_acquired = self._acquire_lock(
                 client_ip, ttl=runtime_config.dedupe_lock_seconds
@@ -222,7 +286,7 @@ class IpGuardMiddleware:
                 time.sleep(0.05)
                 ip_intel = self._get_intel_from_cache(client_ip)
                 if not ip_intel:
-                    return self._handle_provider_failed(request, runtime_config)
+                    return self._handle_provider_failed(request, runtime_config, client_ip)
             else:
                 try:
                     ip_intel = self.provider.fetch_ip_intel(client_ip)
@@ -250,7 +314,7 @@ class IpGuardMiddleware:
                 except Exception as exc:
                     logger.exception("IP 情报查询失败: %s", exc)
                     self.circuit_breaker.record_failure()
-                    return self._handle_provider_failed(request, runtime_config)
+                    return self._handle_provider_failed(request, runtime_config, client_ip)
                 finally:
                     self._release_lock(client_ip)
 
@@ -275,9 +339,17 @@ class IpGuardMiddleware:
                 )
             if self.ip_correlation:
                 self.ip_correlation.record_access(client_ip, is_blocked=True)
-            action = decision.action if decision.action in {"block", "ban", "challenge", "rate_limit"} else "block"
+            risk_action = decision.action if decision.action in {"block", "ban", "challenge", "rate_limit"} else "block"
+            self._record_observation(
+                request,
+                runtime_config,
+                client_ip=client_ip,
+                branch="risk",
+                allowed=False,
+                action=risk_action,
+            )
             return self._build_block(
-                request, runtime_config, ip=client_ip, reason=decision.reason, action=action
+                request, runtime_config, ip=client_ip, reason=decision.reason, action=risk_action
             )
 
         log_access_decision(
@@ -290,11 +362,12 @@ class IpGuardMiddleware:
             ip_mask_enabled=runtime_config.ip_mask_enabled,
             ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
         )
+        self._record_observation(request, runtime_config, client_ip=client_ip, branch="risk", allowed=True)
         if self.ip_correlation:
             self.ip_correlation.record_access(client_ip, is_blocked=False)
         return self.get_response(request)
 
-    def _handle_provider_failed(self, request, runtime_config):
+    def _handle_provider_failed(self, request, runtime_config, client_ip: str = ""):
         fail_open_now = should_fail_open(
             path=request.path,
             default_fail_open=runtime_config.fail_open,
@@ -302,7 +375,13 @@ class IpGuardMiddleware:
             close_prefixes=runtime_config.fail_close_path_prefixes,
         )
         if fail_open_now:
+            self._record_observation(
+                request, runtime_config, client_ip=client_ip, branch="intel_fail_open", allowed=True
+            )
             return self.get_response(request)
+        self._record_observation(
+            request, runtime_config, client_ip=client_ip, branch="intel_fail_close", allowed=False
+        )
         return JsonResponse(
             {"detail": str(_t("IP 风险服务暂不可用"))},
             status=runtime_config.block_status_code,

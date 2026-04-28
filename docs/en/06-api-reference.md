@@ -302,9 +302,11 @@ Get current IP policy.
 
 ### POST /api/policy/
 
-Update IP policy.
+Updates the **default policy** (`name="default"`). Request body fields align with the `IpGuardPolicy` ORM (including `priority`, `match_*`, `tier_thresholds`, `signal_weights`, `medium_action`, `high_action`, etc.); see the installation guide section **Policy engine v2**.
 
-**Request:**
+On success, writes an `IpGuardPolicySnapshot` (before/after JSON) and broadcasts via Redis so worker policy caches are invalidated.
+
+**Request (example):**
 ```json
 {
   "rate_limit_enabled": true,
@@ -312,6 +314,36 @@ Update IP policy.
   "blocked_countries": ["CN"]
 }
 ```
+
+### GET /api/metrics/
+
+Returns **Redis aggregated decision counters** (each middleware branch increments `ip_guard:metrics:counters` HASH) plus an in-process `MetricsCollector` summary. Requires `django_ip_safeguard.view_ipguardpolicy`.
+
+Response `data` includes: `redis_counters` (fields such as `total`, `d_allow`, `d_block`, `b_blacklist`, `b_risk`, `a_ban`, `p_default`, …), `in_process_summary`, `metrics_redis_enabled`, `structured_decision_logging`.
+
+### POST /api/metrics/reset/
+
+Clears the Redis decision-counter HASH. Requires `django_ip_safeguard.change_ipguardpolicy`.
+
+### GET /api/policies/
+
+Lists summary rows for all policies (`name`, `priority`, `enabled`, `medium_action`, `high_action`, `updated_at`).
+
+### POST /api/policies/
+
+Creates a new policy row. JSON: `{"name":"my-api"}` (name must match `[\w.-]+`, max length 64).
+
+### `GET/POST /api/policies/<name>/`
+
+Reads or writes a single policy by name; `POST` behaves like `POST /api/policy/` (including snapshots).
+
+### GET /api/policy/snapshots/
+
+Paginated snapshot list. Query parameters: `policy` (policy name), `page`, `page_size` (max 100).
+
+### `POST /api/policy/snapshots/<id>/rollback/`
+
+Restores that policy **to the snapshot’s “before” fields** (`before_json`). Requires `change_ipguardpolicy`; on success writes a new snapshot row.
 
 ## Ban Management API
 

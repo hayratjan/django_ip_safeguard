@@ -2,20 +2,22 @@ import csv
 import hashlib
 import ipaddress
 import json
+import re
 import secrets
 import time
-from datetime import datetime, time as dt_time, timedelta
+from datetime import datetime, timedelta
+from datetime import time as dt_time
 from functools import wraps
 from typing import Dict, List, Optional, Tuple
 
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import Group, User
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncHour
-from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
@@ -30,19 +32,18 @@ from django_ip_safeguard.models import (
     IpGuardPolicy,
     IpGuardPolicySnapshot,
     ScheduledTask,
-    TaskExecutionLog,
     UserProfile,
 )
 from django_ip_safeguard.services.audit_service import mask_ip
 from django_ip_safeguard.services.cache import RedisCacheService
+from django_ip_safeguard.services.geo_ip_pool_sync import sync_all_geo_pools
 from django_ip_safeguard.services.jwt_service import (
     get_user_from_access_token,
     issue_token_pair,
     refresh_access_token,
 )
-from django_ip_safeguard.services.geo_ip_pool_sync import sync_all_geo_pools
+from django_ip_safeguard.services.metrics_collector import metrics_collector
 from django_ip_safeguard.services.policy_service import GEO_POOL_RULE_CHOICES, invalidate_policy_cache
-
 
 MAX_JSON_BODY_SIZE = 1024 * 1024
 
@@ -375,6 +376,9 @@ def policy_view(request: HttpRequest) -> JsonResponse:
     except json.JSONDecodeError:
         return api_error(_("JSON 格式错误"), code=4001, status=400)
 
+    # 变更前快照（须在写入 payload 之前采集）
+    before_snapshot = _serialize_policy(policy, with_meta=False)
+
     if "rate_limit_per_minute" in payload:
         try:
             rl = int(payload["rate_limit_per_minute"])
@@ -388,7 +392,6 @@ def policy_view(request: HttpRequest) -> JsonResponse:
     if err is not None:
         return err
 
-    before_snapshot = _serialize_policy(policy, with_meta=False)
     policy.save()
     after_snapshot = _serialize_policy(policy, with_meta=False)
     try:
@@ -539,6 +542,217 @@ def _apply_policy_payload(policy, payload: dict):
                 return api_error(_("priority 必须为整数"), code=4014, status=400)
         setattr(policy, field, val)
     return None
+
+
+def _policy_row_summary(policy: IpGuardPolicy) -> dict:
+    """策略列表行摘要（多策略管理表格）。"""
+    return {
+        "name": policy.name,
+        "priority": int(getattr(policy, "priority", 10000) or 10000),
+        "enabled": policy.enabled,
+        "medium_action": getattr(policy, "medium_action", "block"),
+        "high_action": getattr(policy, "high_action", "ban"),
+        "updated_at": policy.updated_at.isoformat(),
+    }
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipguardpolicy")
+@require_GET
+def metrics_api_view(request: HttpRequest) -> JsonResponse:
+    """Redis 累计决策计数 + 进程内 MetricsCollector 摘要。"""
+    cfg = get_settings()
+    redis_counters = {}
+    if cfg.metrics_redis_enabled:
+        try:
+            from django_ip_safeguard.services.decision_metrics import fetch_decision_counters
+
+            redis_counters = fetch_decision_counters(cfg.redis_url)
+        except Exception:  # noqa: BLE001
+            redis_counters = {}
+    return api_success(
+        {
+            "redis_counters": redis_counters,
+            "in_process_summary": metrics_collector.get_summary(),
+            "metrics_redis_enabled": cfg.metrics_redis_enabled,
+            "structured_decision_logging": cfg.structured_decision_logging,
+        }
+    )
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.change_ipguardpolicy")
+@require_http_methods(["POST"])
+def metrics_reset_view(request: HttpRequest) -> JsonResponse:
+    """清空 Redis 决策计数 HASH（需修改策略权限）。"""
+    cfg = get_settings()
+    try:
+        from django_ip_safeguard.services.decision_metrics import reset_decision_counters
+
+        ok = reset_decision_counters(cfg.redis_url)
+    except Exception:  # noqa: BLE001
+        ok = False
+    return api_success({"ok": ok})
+
+
+@csrf_protect
+@api_permission_required(
+    "django_ip_safeguard.view_ipguardpolicy",
+    "django_ip_safeguard.change_ipguardpolicy",
+    any_perm=True,
+)
+@require_http_methods(["GET", "POST"])
+def policies_collection_view(request: HttpRequest) -> JsonResponse:
+    """多策略列表（GET）或新建策略行（POST）。"""
+    if request.method == "GET":
+        if not request.user.has_perm("django_ip_safeguard.view_ipguardpolicy"):
+            return api_error(_("权限不足：缺少策略查看权限"), code=4031, status=403)
+        qs = IpGuardPolicy.objects.all().order_by("priority", "name")
+        return api_success({"items": [_policy_row_summary(p) for p in qs], "count": qs.count()})
+
+    if not request.user.has_perm("django_ip_safeguard.change_ipguardpolicy"):
+        return api_error(_("权限不足：缺少策略修改权限"), code=4031, status=403)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+    raw_name = str(payload.get("name", "") or "").strip()
+    if not raw_name or len(raw_name) > 64:
+        return api_error(_("策略名长度须为 1～64"), code=4020, status=400)
+    if not re.match(r"^[\w.-]+$", raw_name):
+        return api_error(_("策略名仅允许字母数字、下划线、点、短横线"), code=4021, status=400)
+    if IpGuardPolicy.objects.filter(name=raw_name).exists():
+        return api_error(_("策略名已存在"), code=4022, status=400)
+    policy = IpGuardPolicy.objects.create(name=raw_name)
+    invalidate_policy_cache(broadcast=True)
+    return api_success(_policy_row_summary(policy), message=_("策略已创建"))
+
+
+@csrf_protect
+@api_permission_required(
+    "django_ip_safeguard.view_ipguardpolicy",
+    "django_ip_safeguard.change_ipguardpolicy",
+    any_perm=True,
+)
+@require_http_methods(["GET", "POST"])
+def policy_detail_by_name_view(request: HttpRequest, pname: str) -> JsonResponse:
+    """按策略名读写（与 ``/api/policy/`` 等价逻辑，针对单行）。"""
+    policy = get_object_or_404(IpGuardPolicy, name=pname)
+    if request.method == "GET":
+        if not request.user.has_perm("django_ip_safeguard.view_ipguardpolicy"):
+            return api_error(_("权限不足：缺少策略查看权限"), code=4031, status=403)
+        return api_success(_serialize_policy(policy))
+
+    if not request.user.has_perm("django_ip_safeguard.change_ipguardpolicy"):
+        return api_error(_("权限不足：缺少策略修改权限"), code=4031, status=403)
+    try:
+        payload = _load_json_body(request)
+    except json.JSONDecodeError:
+        return api_error(_("JSON 格式错误"), code=4001, status=400)
+
+    before_snapshot = _serialize_policy(policy, with_meta=False)
+    if "rate_limit_per_minute" in payload:
+        try:
+            rl = int(payload["rate_limit_per_minute"])
+        except (TypeError, ValueError):
+            return api_error(_("rate_limit_per_minute 必须为整数"), code=4006, status=400)
+        if rl < 0 or rl > 100000:
+            return api_error(_("rate_limit_per_minute 范围为 0～100000（0 表示关闭）"), code=4006, status=400)
+        policy.rate_limit_per_minute = rl
+
+    err = _apply_policy_payload(policy, payload)
+    if err is not None:
+        return err
+
+    policy.save()
+    after_snapshot = _serialize_policy(policy, with_meta=False)
+    try:
+        IpGuardPolicySnapshot.objects.create(
+            policy=policy,
+            actor=request.user if getattr(request.user, "is_authenticated", False) else None,
+            before_json=before_snapshot,
+            after_json=after_snapshot,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    invalidate_policy_cache(broadcast=True)
+    return api_success({"name": policy.name}, message=_("策略已更新"))
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipguardpolicy")
+@require_GET
+def policy_snapshots_list_view(request: HttpRequest) -> JsonResponse:
+    """策略变更快照分页列表。"""
+    if not request.user.has_perm("django_ip_safeguard.view_ipguardpolicy"):
+        return api_error(_("权限不足：缺少策略查看权限"), code=4031, status=403)
+    policy_name = (request.GET.get("policy") or "").strip()
+    try:
+        page = max(1, int(request.GET.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.GET.get("page_size", 20))
+    except (TypeError, ValueError):
+        page_size = 20
+    page_size = max(1, min(100, page_size))
+    qs = IpGuardPolicySnapshot.objects.select_related("policy", "actor").order_by("-created_at")
+    if policy_name:
+        qs = qs.filter(policy__name=policy_name)
+    paginator = Paginator(qs, page_size)
+    page_obj = paginator.get_page(page)
+    items = []
+    for s in page_obj.object_list:
+        items.append(
+            {
+                "id": s.id,
+                "policy_name": s.policy.name,
+                "created_at": s.created_at.isoformat(),
+                "actor": s.actor.username if s.actor_id else "",
+            }
+        )
+    return api_success(
+        {
+            "items": items,
+            "total": paginator.count,
+            "page": page_obj.number,
+            "page_size": page_size,
+            "num_pages": paginator.num_pages,
+        }
+    )
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.change_ipguardpolicy")
+@require_http_methods(["POST"])
+def policy_snapshot_rollback_view(request: HttpRequest, snapshot_id: int) -> JsonResponse:
+    """将策略恢复为某条快照的 ``before_json`` 状态。"""
+    snap = get_object_or_404(IpGuardPolicySnapshot.objects.select_related("policy"), pk=snapshot_id)
+    policy = snap.policy
+    before_cur = _serialize_policy(policy, with_meta=False)
+    rollback = dict(snap.before_json or {})
+    rollback.pop("name", None)
+    if "rate_limit_per_minute" in rollback:
+        try:
+            policy.rate_limit_per_minute = int(rollback["rate_limit_per_minute"])
+        except (TypeError, ValueError):
+            pass
+    err = _apply_policy_payload(policy, rollback)
+    if err is not None:
+        return err
+    policy.save()
+    after_snap = _serialize_policy(policy, with_meta=False)
+    try:
+        IpGuardPolicySnapshot.objects.create(
+            policy=policy,
+            actor=request.user if getattr(request.user, "is_authenticated", False) else None,
+            before_json=before_cur,
+            after_json=after_snap,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    invalidate_policy_cache(broadcast=True)
+    return api_success({"name": policy.name}, message=_("已按快照回滚"))
 
 
 @csrf_protect
@@ -881,7 +1095,11 @@ def login_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("用户名或密码不能为空"), code=4003, status=400)
 
     client_ip = _get_client_ip(request)
-    from django_ip_safeguard.services.login_throttle import check_login_throttle, record_login_failure, clear_login_failures
+    from django_ip_safeguard.services.login_throttle import (
+        check_login_throttle,
+        clear_login_failures,
+        record_login_failure,
+    )
     throttle = check_login_throttle(client_ip, username)
     if throttle:
         ttl, max_f = throttle
@@ -923,7 +1141,11 @@ def jwt_login_view(request: HttpRequest) -> JsonResponse:
         return api_error(_("用户名或密码不能为空"), code=4003, status=400)
 
     client_ip = _get_client_ip(request)
-    from django_ip_safeguard.services.login_throttle import check_login_throttle, record_login_failure, clear_login_failures
+    from django_ip_safeguard.services.login_throttle import (
+        check_login_throttle,
+        clear_login_failures,
+        record_login_failure,
+    )
     throttle = check_login_throttle(client_ip, username)
     if throttle:
         ttl, max_f = throttle
@@ -1128,8 +1350,8 @@ def change_email_view(request: HttpRequest) -> JsonResponse:
     new_email = str(payload.get("email", "")).strip()
     if not new_email:
         return api_error(_("邮箱不能为空"), code=4002, status=400)
-    from django.core.validators import validate_email
     from django.core.exceptions import ValidationError as DjangoValidationError
+    from django.core.validators import validate_email
     try:
         validate_email(new_email)
     except DjangoValidationError:
