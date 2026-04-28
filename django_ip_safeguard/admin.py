@@ -84,14 +84,42 @@ class IpGeoPoolStatusAdmin(ModelAdmin):
 
 @admin.register(IpAccessLog)
 class IpAccessLogAdmin(ModelAdmin):
-    list_display = ("ip", "country_code", "city", "asn", "risk_score", "decision", "is_datacenter", "created_at")
-    search_fields = ("ip", "country_code", "decision", "path", "asn_org")
+    list_display = (
+        "ip",
+        "username",
+        "method",
+        "country_code",
+        "city",
+        "asn",
+        "risk_score",
+        "decision",
+        "is_datacenter",
+        "created_at",
+    )
+    search_fields = ("ip", "country_code", "decision", "path", "asn_org", "username")
     list_filter = ("decision", "country_code", "is_datacenter", "is_proxy", "is_tor", "is_vpn", "created_at")
     list_filter_submit = True
     readonly_fields = (
-        "ip", "country_code", "country_name", "region", "city",
-        "asn", "asn_org", "is_datacenter", "is_proxy", "is_vpn", "is_tor",
-        "risk_score", "risk_tags", "decision", "reason", "path", "created_at",
+        "ip",
+        "user",
+        "username",
+        "method",
+        "country_code",
+        "country_name",
+        "region",
+        "city",
+        "asn",
+        "asn_org",
+        "is_datacenter",
+        "is_proxy",
+        "is_vpn",
+        "is_tor",
+        "risk_score",
+        "risk_tags",
+        "decision",
+        "reason",
+        "path",
+        "created_at",
     )
 
     def has_add_permission(self, request):

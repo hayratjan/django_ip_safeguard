@@ -234,6 +234,22 @@ class IpGuardPolicy(models.Model):
     blocked_risk_tags = models.JSONField(_("风险标签黑名单"), default=list, blank=True)
     allowed_countries = models.JSONField(_("国家白名单"), default=list, blank=True)
     blocked_countries = models.JSONField(_("国家黑名单"), default=list, blank=True)
+    country_mode = models.CharField(
+        _("国家/地区策略模式"),
+        max_length=24,
+        default="default",
+        choices=(
+            ("default", _("默认（白名单与黑名单同时参与判定）")),
+            ("allowlist", _("仅允许列表（仅放行允许列表中的国家）")),
+            ("blacklist", _("仅黑名单（只拦截禁止列表中的国家）")),
+        ),
+        help_text=_("allowlist 下请配置国家白名单；空列表表示不做国家限制。未知国家是否拦截见「未知国家时拦截」。"),
+    )
+    block_unknown_country = models.BooleanField(
+        _("未知国家时拦截"),
+        default=True,
+        help_text=_("在「仅允许列表」模式下，国家码为空或 UNKNOWN 时是否拦截"),
+    )
     ip_whitelist = models.JSONField(_("IP白名单"), default=list, blank=True)
     ip_blacklist = models.JSONField(_("IP黑名单"), default=list, blank=True)
     rate_limit_per_minute = models.PositiveIntegerField(
@@ -319,6 +335,16 @@ class IpGeoPoolStatus(models.Model):
 class IpAccessLog(models.Model):
 
     ip = models.GenericIPAddressField(_("IP"))
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ip_guard_access_logs",
+        verbose_name=_("访问用户"),
+    )
+    username = models.CharField(_("用户名快照"), max_length=150, blank=True, default="")
+    method = models.CharField(_("HTTP 方法"), max_length=16, blank=True, default="")
     country_code = models.CharField(_("国家码"), max_length=16, blank=True)
     country_name = models.CharField(_("国家名"), max_length=64, blank=True, default="")
     region = models.CharField(_("省份/地区"), max_length=64, blank=True, default="")
@@ -345,6 +371,7 @@ class IpAccessLog(models.Model):
             models.Index(fields=["asn"], name="idx_asn"),
             models.Index(fields=["is_datacenter"], name="idx_datacenter"),
             models.Index(fields=["decision", "-created_at"], name="idx_decision_created"),
+            models.Index(fields=["user", "-created_at"], name="idx_accesslog_user_created"),
         ]
 
 

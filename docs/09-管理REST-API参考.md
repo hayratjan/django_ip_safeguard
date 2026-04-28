@@ -141,13 +141,20 @@ path("ip-guard/", include("django_ip_safeguard.urls")),
 ### 9.7.1 `GET /ip-guard/api/access-logs/`
 
 - **权限**：`view_ipaccesslog`  
-- **Query**：`page`、`page_size`；筛选：`decision`=`allow|block`、`country`（ISO2）、`path`（子串）、`q`（IP 子串）、`start`/`end`（`YYYY-MM-DD`）
+- **Query**：`page`、`page_size`；筛选：`decision`=`allow|block`、`country`（ISO2）、`path`（子串）、`q`（IP 子串）、`username`（子串模糊）、`user_id`（整数精确）、`start`/`end`（`YYYY-MM-DD`）  
+- **列表项字段**（节选）：`ip`、`user_id`、`username`、`method`、`country_code`、`country_name`、`region`、`city`、`risk_score`、`decision`、`reason`、`path`、`created_at`
 
 ### 9.7.2 `GET /ip-guard/api/access-logs/export/`
 
 - **权限**：`view_ipaccesslog`  
 - **说明**：**流式 CSV**；与列表接口相同筛选条件；**最多 10000 条**；带 UTF-8 BOM。  
 - **鉴权**：Session Cookie；JWT 场景需在 HTTP 客户端上附加 `Authorization: Bearer`（前端导出模块已对齐）。
+
+### 9.7.3 `GET /ip-guard/api/access-logs/user-summary/`
+
+- **权限**：`view_ipaccesslog`  
+- **Query**：`user_id`（必填，正整数）、`days`（默认 30，最大 180）  
+- **说明**：按用户汇总访问次数、全量 distinct IP 数、按 IP 聚合次数及最近地理信息（`by_ip` 最多 200 行）；排除 `security_audit` 类日志。
 
 ---
 

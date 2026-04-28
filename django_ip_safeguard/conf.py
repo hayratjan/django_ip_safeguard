@@ -23,6 +23,9 @@ class IpGuardSettings:
     risk_score_threshold: int = 70
     blocked_countries: Tuple[str, ...] = ()
     allowed_countries: Tuple[str, ...] = ()
+    # 与 IpGuardPolicy.country_mode / block_unknown_country 对齐；策略中心合并后覆盖
+    country_mode: str = "default"
+    block_unknown_country: bool = True
     blocked_risk_tags: Tuple[str, ...] = ("tor", "proxy", "vpn")
     ip_whitelist: Tuple[str, ...] = ()
     ip_blacklist: Tuple[str, ...] = ()
@@ -223,6 +226,8 @@ def get_settings() -> IpGuardSettings:
         risk_score_threshold=getattr(settings, "IP_GUARD_RISK_SCORE_THRESHOLD", 70),
         blocked_countries=_to_tuple(getattr(settings, "IP_GUARD_BLOCKED_COUNTRIES", ())),
         allowed_countries=_to_tuple(getattr(settings, "IP_GUARD_ALLOWED_COUNTRIES", ())),
+        country_mode=str(getattr(settings, "IP_GUARD_COUNTRY_MODE", "default") or "default").lower(),
+        block_unknown_country=bool(getattr(settings, "IP_GUARD_BLOCK_UNKNOWN_COUNTRY", True)),
         blocked_risk_tags=_to_tuple(getattr(settings, "IP_GUARD_BLOCKED_RISK_TAGS", ("tor", "proxy", "vpn"))),
         ip_whitelist=_to_str_tuple(ip_whitelist_val),
         ip_blacklist=_to_str_tuple(getattr(settings, "IP_GUARD_IP_BLACKLIST", ())),

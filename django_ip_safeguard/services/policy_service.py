@@ -29,6 +29,7 @@ _SUBSCRIBER_LOCK = threading.Lock()
 
 # 与策略中心、API 校验一致的地理池规则取值
 GEO_POOL_RULE_CHOICES = frozenset({"off", "allow_only_in_pool", "block_in_pool"})
+COUNTRY_MODE_CHOICES = frozenset({"default", "allowlist", "blacklist"})
 
 # 默认信号权重（策略未指定 signal_weights 时使用）
 DEFAULT_SIGNAL_WEIGHTS = {
@@ -62,6 +63,11 @@ def _normalize_geo_rule(value: str) -> str:
     return v if v in GEO_POOL_RULE_CHOICES else "off"
 
 
+def _normalize_country_mode(value: str) -> str:
+    v = str(value or "default").strip().lower()
+    return v if v in COUNTRY_MODE_CHOICES else "default"
+
+
 def _compile_policy(policy) -> CompiledPolicy:
     """ORM 行 → CompiledPolicy（不可变快照）。"""
     return CompiledPolicy(
@@ -90,6 +96,8 @@ def _compile_policy(policy) -> CompiledPolicy:
             "use_db_log": bool(policy.use_db_log),
             "china_pool_rule": _normalize_geo_rule(getattr(policy, "china_pool_rule", "off")),
             "international_pool_rule": _normalize_geo_rule(getattr(policy, "international_pool_rule", "off")),
+            "country_mode": _normalize_country_mode(getattr(policy, "country_mode", "default")),
+            "block_unknown_country": bool(getattr(policy, "block_unknown_country", True)),
             "tier_thresholds": dict(getattr(policy, "tier_thresholds", {}) or {}),
             "signal_weights": dict(getattr(policy, "signal_weights", {}) or {}),
             "medium_action": str(getattr(policy, "medium_action", "block") or "block"),
@@ -128,6 +136,8 @@ def _merge_into_config(base_config: IpGuardSettings, compiled: CompiledPolicy) -
         use_db_log=raw["use_db_log"],
         china_pool_rule=raw["china_pool_rule"],
         international_pool_rule=raw["international_pool_rule"],
+        country_mode=raw["country_mode"],
+        block_unknown_country=raw["block_unknown_country"],
         signal_weights=raw["signal_weights"] or dict(DEFAULT_SIGNAL_WEIGHTS),
         medium_action=raw["medium_action"],
         high_action=raw["high_action"],

@@ -1,42 +1,55 @@
 <template>
   <div class="page-card">
-    <h3>审计日志</h3>
+    <h3>{{ t("logs.title") }}</h3>
     <el-space wrap style="margin-bottom: 12px">
-      <el-select v-model="query.decision" placeholder="决策" style="width: 120px" clearable>
-        <el-option label="全部" value="" />
-        <el-option label="放行" value="allow" />
-        <el-option label="拦截" value="block" />
+      <el-select v-model="query.decision" :placeholder="t('logs.decisionFilter')" style="width: 120px" clearable>
+        <el-option :label="t('logs.all')" value="" />
+        <el-option :label="t('logs.allow')" value="allow" />
+        <el-option :label="t('logs.block')" value="block" />
       </el-select>
-      <el-input v-model="query.country" placeholder="国家码" style="width: 100px" clearable />
-      <el-input v-model="query.path" placeholder="路径包含" style="width: 180px" clearable />
-      <el-input v-model="query.q" placeholder="搜索 IP" style="width: 200px" clearable />
+      <el-input v-model="query.country" :placeholder="t('logs.countryCode')" style="width: 100px" clearable />
+      <el-input v-model="query.username" :placeholder="t('logs.username')" style="width: 120px" clearable />
+      <el-input v-model="query.user_id" :placeholder="t('logs.userId')" style="width: 110px" clearable />
+      <el-input v-model="query.path" :placeholder="t('logs.pathContains')" style="width: 160px" clearable />
+      <el-input v-model="query.q" :placeholder="t('logs.searchIp')" style="width: 160px" clearable />
       <el-date-picker
         v-model="dateRange"
         type="daterange"
         value-format="YYYY-MM-DD"
-        range-separator="至"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
+        :range-separator="t('logs.to')"
+        :start-placeholder="t('logs.startDate')"
+        :end-placeholder="t('logs.endDate')"
         style="width: 260px"
       />
-      <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button :loading="exporting" @click="onExport">导出 CSV</el-button>
+      <el-button type="primary" @click="onSearch">{{ t("logs.query") }}</el-button>
+      <el-button :loading="exporting" @click="onExport">{{ t("logs.exportCsv") }}</el-button>
     </el-space>
 
-    <el-table v-loading="loading" :data="items" size="small">
-      <el-table-column prop="ip" label="IP" width="150" />
-      <el-table-column prop="country_code" label="国家" width="90" />
-      <el-table-column prop="risk_score" label="风险分" width="90" />
-      <el-table-column prop="decision" label="决策" width="90">
+    <el-table v-loading="loading" :data="items" size="small" table-layout="auto">
+      <el-table-column prop="created_at" :label="t('logs.time')" width="178" />
+      <el-table-column :label="t('logs.user')" min-width="120" show-overflow-tooltip>
         <template #default="{ row }">
-          <el-tag :type="row.decision === 'block' ? 'danger' : 'success'" size="small" effect="plain">
-            {{ row.decision === 'block' ? '拦截' : '放行' }}
+          <span v-if="row.username">{{ row.username }}</span>
+          <span v-else-if="row.user_id">#{{ row.user_id }}</span>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="method" :label="t('logs.method')" width="72" />
+      <el-table-column prop="ip" :label="t('logs.ip')" width="138" />
+      <el-table-column prop="country_code" :label="t('logs.country')" width="72" />
+      <el-table-column prop="country_name" :label="t('logs.countryName')" min-width="100" show-overflow-tooltip />
+      <el-table-column prop="region" :label="t('logs.region')" min-width="90" show-overflow-tooltip />
+      <el-table-column prop="city" :label="t('logs.city')" min-width="90" show-overflow-tooltip />
+      <el-table-column prop="path" :label="t('logs.path')" min-width="160" show-overflow-tooltip />
+      <el-table-column prop="risk_score" :label="t('logs.riskScore')" width="80" />
+      <el-table-column prop="decision" :label="t('logs.decision')" width="100">
+        <template #default="{ row }">
+          <el-tag :type="decisionTagType(row.decision)" size="small" effect="plain">
+            {{ decisionLabel(row.decision) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="reason" label="原因" show-overflow-tooltip />
-      <el-table-column prop="path" label="路径" width="200" show-overflow-tooltip />
-      <el-table-column prop="created_at" label="时间" width="190" />
+      <el-table-column prop="reason" :label="t('logs.reason')" min-width="140" show-overflow-tooltip />
     </el-table>
     <el-pagination
       v-model:current-page="page"
@@ -54,13 +67,15 @@
 <script setup>
 import { onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { getAccessLogsApi } from "../api";
 import { downloadAccessLogsCsv } from "../api/export";
 
 const route = useRoute();
+const { t } = useI18n();
 
-const query = reactive({ q: "", country: "", decision: "", path: "" });
+const query = reactive({ q: "", country: "", decision: "", path: "", username: "", user_id: "" });
 const dateRange = ref(null);
 const items = ref([]);
 const page = ref(1);
@@ -75,6 +90,8 @@ const filterParams = () => {
     country: query.country || undefined,
     decision: query.decision || undefined,
     path: query.path || undefined,
+    username: query.username || undefined,
+    user_id: query.user_id || undefined,
   };
   if (dateRange.value?.length === 2) {
     p.start = dateRange.value[0];
@@ -110,35 +127,50 @@ const onSizeChange = () => {
   load();
 };
 
+/** 决策列展示：含 security_audit 等非 allow/block */
+const decisionTagType = (d) => {
+  if (d === "block") return "danger";
+  if (d === "allow") return "success";
+  return "info";
+};
+
+const decisionLabel = (d) => {
+  if (d === "block") return t("logs.block");
+  if (d === "allow") return t("logs.allow");
+  return d || "—";
+};
+
 const onExport = async () => {
   exporting.value = true;
   try {
     await downloadAccessLogsCsv(filterParams());
-    ElMessage.success("已开始下载");
-  } catch (e) {
-    ElMessage.error("导出失败，请检查登录态或网络");
+    ElMessage.success(t("logs.exportSuccess"));
+  } catch {
+    ElMessage.error(t("logs.exportFailed"));
   } finally {
     exporting.value = false;
   }
 };
 
+const applyRouteQuery = (q) => {
+  if (q.q) query.q = q.q;
+  if (q.country) query.country = q.country;
+  if (q.decision) query.decision = q.decision;
+  if (q.path) query.path = q.path;
+  if (q.username) query.username = q.username;
+  if (q.user_id) query.user_id = q.user_id;
+};
+
 watch(
   () => route.query,
   (q) => {
-    if (q.q) query.q = q.q;
-    if (q.country) query.country = q.country;
-    if (q.decision) query.decision = q.decision;
-    if (q.path) query.path = q.path;
+    applyRouteQuery(q);
     load();
   },
   { immediate: true }
 );
 
 onMounted(() => {
-  const q = route.query;
-  if (q.q) query.q = q.q;
-  if (q.country) query.country = q.country;
-  if (q.decision) query.decision = q.decision;
-  if (q.path) query.path = q.path;
+  applyRouteQuery(route.query);
 });
 </script>

@@ -80,7 +80,27 @@
           style="width: 100%"
         />
       </el-form-item>
+
+      <el-divider content-position="left">{{ t("policy.countrySection") }}</el-divider>
+      <p class="hint block-hint">{{ t("policy.countrySectionHint") }}</p>
+      <el-form-item :label="t('policy.countryMode')">
+        <el-radio-group v-model="form.country_mode">
+          <el-radio-button label="default">{{ t("policy.countryModeDefault") }}</el-radio-button>
+          <el-radio-button label="allowlist">{{ t("policy.countryModeAllowlist") }}</el-radio-button>
+          <el-radio-button label="blacklist">{{ t("policy.countryModeBlacklist") }}</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item v-if="form.country_mode === 'allowlist'" :label="t('policy.blockUnknownCountry')">
+        <el-switch v-model="form.block_unknown_country" />
+        <span class="hint">{{ t("policy.blockUnknownHint") }}</span>
+      </el-form-item>
+
       <el-form-item :label="t('policy.allowedCountries')">
+        <div class="country-toolbar">
+          <el-button size="small" @click="mergeCommonAllowed">{{ t("policy.mergeCommonCountries") }}</el-button>
+          <el-button size="small" @click="clearAllowed">{{ t("policy.clearAllowed") }}</el-button>
+          <el-button size="small" @click="clearBlocked">{{ t("policy.clearBlocked") }}</el-button>
+        </div>
         <el-select
           v-model="form.allowed_countries"
           multiple
@@ -219,6 +239,7 @@ import {
   syncGeoPoolsApi,
   updatePolicyByNameApi,
 } from "../api";
+import { COMMON_ISO2 } from "../constants/policyGeo";
 import { useAuthStore } from "../stores/auth";
 
 const { t } = useI18n();
@@ -238,6 +259,8 @@ const emptyForm = () => ({
   enabled: true,
   risk_score_threshold: 70,
   blocked_risk_tags: [],
+  country_mode: "default",
+  block_unknown_country: true,
   allowed_countries: [],
   blocked_countries: [],
   ip_whitelist: [],
@@ -271,6 +294,17 @@ const newPolicyName = ref("");
 const authStore = useAuthStore();
 const canEditPolicy = computed(() => authStore.hasPerm("django_ip_safeguard.change_ipguardpolicy"));
 const canViewPolicy = computed(() => authStore.hasPerm("django_ip_safeguard.view_ipguardpolicy"));
+
+const mergeCommonAllowed = () => {
+  const s = new Set([...(form.allowed_countries || []), ...COMMON_ISO2]);
+  form.allowed_countries = Array.from(s).sort();
+};
+const clearAllowed = () => {
+  form.allowed_countries = [];
+};
+const clearBlocked = () => {
+  form.blocked_countries = [];
+};
 
 const syncTierWeightsFromInputs = () => {
   try {
@@ -407,6 +441,12 @@ const onSave = async () => {
   gap: 10px;
   margin-top: 8px;
   flex-wrap: wrap;
+}
+.country-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .hint {
   margin-left: 8px;

@@ -34,6 +34,11 @@ from django_ip_safeguard.services.policy_service import (
     load_effective_policy,
     start_policy_invalidate_subscriber,
 )
+
+
+def _audit_request_meta(request):
+    """审计日志附带登录用户与 HTTP 方法。"""
+    return {"user": getattr(request, "user", None), "method": getattr(request, "method", "") or ""}
 from django_ip_safeguard.services.provider_factory import build_provider
 from django_ip_safeguard.services.risk_engine import evaluate_ip_risk
 from django_ip_safeguard.types import IpIntel
@@ -223,6 +228,7 @@ class IpGuardMiddleware:
                 ip_intel=policy_intel,
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+                **_audit_request_meta(request),
             )
             self._record_observation(request, runtime_config, client_ip=client_ip, branch="blacklist", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=str(reason))
@@ -238,6 +244,7 @@ class IpGuardMiddleware:
                 ip_intel=policy_intel,
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+                **_audit_request_meta(request),
             )
             self._record_observation(request, runtime_config, client_ip=client_ip, branch="geo_pool", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=geo_reason)
@@ -253,6 +260,7 @@ class IpGuardMiddleware:
                 ip_intel=policy_intel,
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+                **_audit_request_meta(request),
             )
             self._record_observation(request, runtime_config, client_ip=client_ip, branch="ratelimit", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=reason, action="rate_limit")
@@ -268,6 +276,7 @@ class IpGuardMiddleware:
                 ip_intel=policy_intel,
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+                **_audit_request_meta(request),
             )
             self._record_observation(request, runtime_config, client_ip=client_ip, branch="banned", allowed=False)
             return self._build_block(request, runtime_config, ip=client_ip, reason=reason)
@@ -329,6 +338,7 @@ class IpGuardMiddleware:
                 ip_intel=ip_intel,
                 ip_mask_enabled=runtime_config.ip_mask_enabled,
                 ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+                **_audit_request_meta(request),
             )
             if decision.should_ban:
                 ban_ip(
@@ -361,6 +371,7 @@ class IpGuardMiddleware:
             ip_intel=ip_intel,
             ip_mask_enabled=runtime_config.ip_mask_enabled,
             ip_mask_keep_prefix=runtime_config.ip_mask_keep_prefix,
+            **_audit_request_meta(request),
         )
         self._record_observation(request, runtime_config, client_ip=client_ip, branch="risk", allowed=True)
         if self.ip_correlation:

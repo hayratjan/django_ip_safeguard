@@ -410,49 +410,27 @@ JWT 令牌登录。
 
 ### GET /api/access-logs/
 
-获取访问日志。
+分页查询审计日志（与 [09-管理REST-API参考](../09-管理REST-API参考.md) 一致；实际部署前缀多为 `/ip-guard/api/`）。
 
 **查询参数：**
-- `page` (int)：页码
-- `page_size` (int)：每页数量
-- `ip_address` (str)：按 IP 筛选
-- `decision` (str)：按决策筛选
-- `start_date` (str)：按开始日期筛选（ISO 格式）
-- `end_date` (str)：按结束日期筛选（ISO 格式）
+- `page`、`page_size`
+- `decision`：`allow` / `block`
+- `country`：ISO2 国家码
+- `path`：路径子串
+- `q`：IP 子串
+- `username`：用户名子串（模糊）
+- `user_id`：Django 用户 ID（精确）
+- `start`、`end`：日期 `YYYY-MM-DD`
 
-**响应 (200)：**
-```json
-{
-  "items": [
-    {
-      "id": 1,
-      "ip_address": "192.168.1.1",
-      "path": "/admin/",
-      "method": "GET",
-      "status_code": 200,
-      "decision": "allow",
-      "country": "US",
-      "created_at": "2024-01-15T12:00:00Z"
-    }
-  ],
-  "pagination": {
-    "total": 10000,
-    "page": 1,
-    "page_size": 20
-  }
-}
-```
+**响应 `items[]` 字段（节选）：** `ip`、`user_id`、`username`、`method`、`country_code`、`country_name`、`region`、`city`、`risk_score`、`risk_tags`、`decision`、`reason`、`path`、`created_at`。
 
 ### GET /api/access-logs/export/
 
-导出访问日志。
+流式导出 CSV（UTF-8 BOM），筛选参数同上，最多 10000 条。
 
-**查询参数：**
-- 同 GET /api/access-logs/
-- `format` (str)：导出格式 (csv/json)
+### GET /api/access-logs/user-summary/
 
-**响应 (200)：**
-文件下载
+按用户汇总：`user_id`（必填）、`days`（默认 30，最大 180）。返回访问总数、全量不同 IP 数、`by_ip` 列表（至多 200 行，按次数降序）及每条 IP 最近日志上的地理信息。
 
 ## 健康检查 API
 

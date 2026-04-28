@@ -2,7 +2,7 @@
 
 ## 11.1 工程位置与技术栈
 
-- 目录：`frontend-admin/`  
+- 目录：`django_ip_safeguard/contrib/admin_frontend/`（历史文档中 `frontend-admin/` 指同一套前端工程）  
 - 框架：**Vue 3** + **Vite 5** + **Element Plus** + **Pinia** + **Vue Router** + **Axios**  
 - 构建产物：`frontend-admin/dist/`，可由 Nginx 静态托管或由 Django `collectstatic` 策略外置。
 
@@ -54,7 +54,8 @@ npm run dev
 | `/dashboard` | 运营大盘：统计卡片、世界地图热力图、国家柱状图、近期记录（所有元素可点击跳转审计日志） | `view_ipaccesslog` |
 | `/policy` | 策略编辑、地理池状态、同步按钮 | 查看/修改策略权限 |
 | `/ban` | 封禁列表与操作 | `view_ipbanrecord` / `change_ipbanrecord` |
-| `/logs` | 审计分页与 CSV 导出（支持从 Dashboard 跳转自动填充筛选条件） | `view_ipaccesslog` |
+| `/logs` | 审计分页与 CSV 导出：用户、HTTP 方法、路径、国家/地区/城市等；支持从 Dashboard 跳转自动填充筛选条件 | `view_ipaccesslog` |
+| `/user-access` | 用户访问画像：按 `user_id` 汇总访问次数、不同 IP 数、各 IP 次数与最近地理信息 | `view_ipaccesslog` |
 | `/health` | Redis 延迟、熔断、地理池摘要 | `view_ipguardpolicy` |
 | `/user-chart` | 用户图表：每日趋势、风险分布、小时分布、国家 Top10 | `view_ipaccesslog` |
 | `/user-settings` | 用户设置：修改密码、修改邮箱、2FA 双因素认证 | 无（登录即可访问） |

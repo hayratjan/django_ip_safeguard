@@ -14,7 +14,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import Group, User
 from django.core.paginator import Paginator
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.db.models.functions import TruncDate, TruncHour
 from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -43,7 +43,11 @@ from django_ip_safeguard.services.jwt_service import (
     refresh_access_token,
 )
 from django_ip_safeguard.services.metrics_collector import metrics_collector
-from django_ip_safeguard.services.policy_service import GEO_POOL_RULE_CHOICES, invalidate_policy_cache
+from django_ip_safeguard.services.policy_service import (
+    COUNTRY_MODE_CHOICES,
+    GEO_POOL_RULE_CHOICES,
+    invalidate_policy_cache,
+)
 
 MAX_JSON_BODY_SIZE = 1024 * 1024
 
@@ -69,20 +73,24 @@ def _log_security_audit(request: HttpRequest, action: str, detail: str = "", use
     try:
         from django_ip_safeguard.models import IpAccessLog
         ip = _get_client_ip(request)
+        u = user or getattr(request, "user", None)
         IpAccessLog.objects.create(
             ip=ip,
+            user=u if u and getattr(u, "is_authenticated", False) else None,
+            username=(u.get_username() if u and getattr(u, "is_authenticated", False) else "")[:150],
+            method=(getattr(request, "method", "") or "")[:16],
             country_code="",
             country_name="",
             region="",
             city="",
-            asn=0,
+            asn=None,
             asn_org="",
             is_datacenter=False,
             is_proxy=False,
             is_vpn=False,
             is_tor=False,
             risk_score=0,
-            risk_tags="",
+            risk_tags=[],
             decision="security_audit",
             reason=f"[{action}] {detail}"[:255],
             path=f"/security-audit/{action}"[:255],
@@ -205,6 +213,7 @@ def _apply_access_log_filters(request: HttpRequest, queryset):
     country = str(request.GET.get("country", "")).strip().upper()
     q = str(request.GET.get("q", "")).strip()
     path_q = str(request.GET.get("path", "")).strip()
+    username_q = str(request.GET.get("username", "")).strip()
     start_s = str(request.GET.get("start", "")).strip()
     end_s = str(request.GET.get("end", "")).strip()
     if decision in {"allow", "block"}:
@@ -215,6 +224,11 @@ def _apply_access_log_filters(request: HttpRequest, queryset):
         queryset = queryset.filter(ip__icontains=q)
     if path_q:
         queryset = queryset.filter(path__icontains=path_q)
+    if username_q:
+        queryset = queryset.filter(username__icontains=username_q)
+    uid_raw = str(request.GET.get("user_id", "")).strip()
+    if uid_raw.isdigit():
+        queryset = queryset.filter(user_id=int(uid_raw))
     if start_s:
         d = parse_date(start_s)
         if d:
@@ -231,7 +245,13 @@ def _apply_access_log_filters(request: HttpRequest, queryset):
 def _access_log_to_dict(item: IpAccessLog, mask_enabled: bool = False, mask_keep_prefix: int = 2) -> dict:
     return {
         "ip": mask_ip(item.ip, mask_enabled, mask_keep_prefix),
+        "user_id": item.user_id,
+        "username": item.username or "",
+        "method": item.method or "",
         "country_code": item.country_code,
+        "country_name": item.country_name or "",
+        "region": item.region or "",
+        "city": item.city or "",
         "risk_score": item.risk_score,
         "risk_tags": item.risk_tags,
         "decision": item.decision,
@@ -253,6 +273,15 @@ def _ban_record_to_dict(item: IpBanRecord) -> dict:
 
 
 def _get_days_param(request: HttpRequest, default: int = 7, max_days: int = 30) -> int:
+    try:
+        days = int(request.GET.get("days", default))
+    except (TypeError, ValueError):
+        days = default
+    return max(1, min(max_days, days))
+
+
+def _get_days_param_extended(request: HttpRequest, default: int = 7, max_days: int = 180) -> int:
+    """统计类接口允许更长回溯天数。"""
     try:
         days = int(request.GET.get("days", default))
     except (TypeError, ValueError):
@@ -427,6 +456,8 @@ def _serialize_policy(policy, with_meta: bool = True) -> dict:
         "blocked_risk_tags": policy.blocked_risk_tags,
         "allowed_countries": policy.allowed_countries,
         "blocked_countries": policy.blocked_countries,
+        "country_mode": getattr(policy, "country_mode", "default") or "default",
+        "block_unknown_country": bool(getattr(policy, "block_unknown_country", True)),
         "ip_whitelist": policy.ip_whitelist,
         "ip_blacklist": policy.ip_blacklist,
         "rate_limit_per_minute": policy.rate_limit_per_minute,
@@ -477,6 +508,8 @@ def _apply_policy_payload(policy, payload: dict):
         "blocked_risk_tags",
         "allowed_countries",
         "blocked_countries",
+        "country_mode",
+        "block_unknown_country",
         "ip_whitelist",
         "ip_blacklist",
         "fail_open",
@@ -524,6 +557,16 @@ def _apply_policy_payload(policy, payload: dict):
                     code=4012,
                     status=400,
                 )
+        elif field == "country_mode":
+            val = str(val).strip().lower()
+            if val not in COUNTRY_MODE_CHOICES:
+                return api_error(
+                    _("字段 country_mode 须为 default、allowlist 或 blacklist"),
+                    code=4015,
+                    status=400,
+                )
+        elif field == "block_unknown_country":
+            val = bool(val)
         elif field in {"medium_action", "high_action"}:
             val = str(val).strip().lower()
             if val not in _POLICY_ACTION_VALUES:
@@ -881,12 +924,35 @@ def access_log_export_view(request: HttpRequest) -> StreamingHttpResponse:
     def rows():
         writer = csv.writer(pseudo_buffer)
         yield "\ufeff"
-        yield writer.writerow(["ip", "country_code", "risk_score", "risk_tags", "decision", "reason", "path", "created_at"])
+        yield writer.writerow(
+            [
+                "ip",
+                "user_id",
+                "username",
+                "method",
+                "country_code",
+                "country_name",
+                "region",
+                "city",
+                "risk_score",
+                "risk_tags",
+                "decision",
+                "reason",
+                "path",
+                "created_at",
+            ]
+        )
         for item in queryset:
             yield writer.writerow(
                 [
                     mask_ip(item.ip, cfg.ip_mask_enabled, cfg.ip_mask_keep_prefix),
+                    item.user_id or "",
+                    item.username or "",
+                    item.method or "",
                     item.country_code,
+                    item.country_name or "",
+                    item.region or "",
+                    item.city or "",
                     item.risk_score,
                     json.dumps(item.risk_tags or [], ensure_ascii=False),
                     item.decision,
@@ -899,6 +965,75 @@ def access_log_export_view(request: HttpRequest) -> StreamingHttpResponse:
     response = StreamingHttpResponse(rows(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = 'attachment; filename="ip_guard_access_logs.csv"'
     return response
+
+
+@csrf_protect
+@api_permission_required("django_ip_safeguard.view_ipaccesslog")
+@require_GET
+def access_log_user_summary_view(request: HttpRequest) -> JsonResponse:
+    """按用户汇总访问次数与历史 IP 的地理信息（依赖访问日志开启 use_db_log）。"""
+    uid_raw = str(request.GET.get("user_id", "")).strip()
+    if not uid_raw.isdigit() or int(uid_raw) <= 0:
+        return api_error(_("请提供有效的 user_id"), code=4006, status=400)
+    uid = int(uid_raw)
+    days = _get_days_param_extended(request, default=30, max_days=180)
+    since = timezone.now() - timedelta(days=days)
+    qs = (
+        IpAccessLog.objects.filter(user_id=uid, created_at__gte=since)
+        .exclude(decision="security_audit")
+        .order_by("-created_at")
+    )
+    visit_total = qs.count()
+    distinct_ip_count = (
+        IpAccessLog.objects.filter(user_id=uid, created_at__gte=since)
+        .exclude(decision="security_audit")
+        .aggregate(c=Count("ip", distinct=True))["c"]
+        or 0
+    )
+    try:
+        u = User.objects.get(pk=uid)
+        user_info = {"id": u.id, "username": u.username, "is_active": u.is_active}
+    except User.DoesNotExist:
+        user_info = {"id": uid, "username": "", "is_active": False, "deleted": True}
+
+    cfg = get_settings()
+    ip_rows = (
+        IpAccessLog.objects.filter(user_id=uid, created_at__gte=since)
+        .exclude(decision="security_audit")
+        .values("ip")
+        .annotate(request_count=Count("id"), last_at=Max("created_at"))
+        .order_by("-request_count")[:200]
+    )
+    by_ip: List[dict] = []
+    for row in ip_rows:
+        latest = (
+            IpAccessLog.objects.filter(user_id=uid, ip=row["ip"], created_at__gte=since)
+            .exclude(decision="security_audit")
+            .order_by("-created_at")
+            .first()
+        )
+        la = row["last_at"]
+        by_ip.append(
+            {
+                "ip": mask_ip(row["ip"], cfg.ip_mask_enabled, cfg.ip_mask_keep_prefix),
+                "request_count": int(row["request_count"]),
+                "last_at": la.isoformat() if la else "",
+                "country_code": (latest.country_code if latest else "") or "",
+                "country_name": (latest.country_name if latest else "") or "",
+                "region": (latest.region if latest else "") or "",
+                "city": (latest.city if latest else "") or "",
+            }
+        )
+
+    return api_success(
+        {
+            "user": user_info,
+            "days": days,
+            "visit_total": visit_total,
+            "distinct_ip_count": int(distinct_ip_count),
+            "by_ip": by_ip,
+        }
+    )
 
 
 @csrf_protect

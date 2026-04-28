@@ -419,49 +419,19 @@ List currently banned IPs.
 
 ### GET /api/access-logs/
 
-Get access logs.
+Paginated audit logs (see [09 REST API reference](../09-管理REST-API参考.md); production base path is usually `/ip-guard/api/`).
 
-**Query Parameters:**
-- `page` (int): Page number
-- `page_size` (int): Items per page
-- `ip_address` (str): Filter by IP
-- `decision` (str): Filter by decision
-- `start_date` (str): Filter by start date (ISO format)
-- `end_date` (str): Filter by end date (ISO format)
+**Query parameters:** `page`, `page_size`, `decision` (`allow`/`block`), `country` (ISO2), `path` (substring), `q` (IP substring), `username` (substring), `user_id` (exact int), `start`/`end` (`YYYY-MM-DD`).
 
-**Response (200):**
-```json
-{
-  "items": [
-    {
-      "id": 1,
-      "ip_address": "192.168.1.1",
-      "path": "/admin/",
-      "method": "GET",
-      "status_code": 200,
-      "decision": "allow",
-      "country": "US",
-      "created_at": "2024-01-15T12:00:00Z"
-    }
-  ],
-  "pagination": {
-    "total": 10000,
-    "page": 1,
-    "page_size": 20
-  }
-}
-```
+**Item fields (subset):** `ip`, `user_id`, `username`, `method`, `country_code`, `country_name`, `region`, `city`, `risk_score`, `risk_tags`, `decision`, `reason`, `path`, `created_at`.
 
 ### GET /api/access-logs/export/
 
-Export access logs.
+Streaming CSV (UTF-8 BOM), same filters as the list endpoint, max 10,000 rows.
 
-**Query Parameters:**
-- Same as GET /api/access-logs/
-- `format` (str): Export format (csv/json)
+### GET /api/access-logs/user-summary/
 
-**Response (200):**
-File download
+Per-user rollup: required `user_id`, optional `days` (default 30, max 180). Returns visit totals, full distinct IP count, and `by_ip` (up to 200 rows by count) with latest geo per IP.
 
 ## Health Check API
 

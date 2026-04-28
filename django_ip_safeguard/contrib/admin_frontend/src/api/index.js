@@ -53,6 +53,7 @@ export const banIpApi = (payload) => http.post("/ban/", payload);
 export const unbanIpApi = (payload) => http.post("/unban/", payload);
 
 export const getAccessLogsApi = (params) => http.get("/access-logs/", { params });
+export const accessLogUserSummaryApi = (params) => http.get("/access-logs/user-summary/", { params });
 export const getSecurityAuditLogsApi = (params) => http.get("/security-audit-logs/", { params });
 
 export const i18nLangListApi = () => http.get("/i18n/languages/");

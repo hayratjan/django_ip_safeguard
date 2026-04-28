@@ -227,20 +227,21 @@ urlpatterns = [
   - 地区白/黑名单仅支持两位国家码（如 `CN`/`US`），写入时自动大写去重
   - IP 白/黑名单支持单 IP 与 CIDR（如 `203.0.113.8`、`10.0.0.0/8`），写入时会规范化并去重
 - `/ip-guard/api/ban/`、`/ip-guard/api/unban/`、`/ip-guard/api/ban-list/`：封禁与分页列表（支持 `q`、`active`、`source`）
-- `/ip-guard/api/access-logs/`：审计分页（支持 `decision`、`country`、`path`、`q`、`start`/`end` 日期 `YYYY-MM-DD`）
+- `/ip-guard/api/access-logs/`：审计分页（支持 `decision`、`country`、`path`、`q`、`username`、`user_id`、`start`/`end` 日期 `YYYY-MM-DD`）
 - `/ip-guard/api/access-logs/export/`：按相同筛选条件导出 CSV（最多 1 万条，需 staff；Session 凭 Cookie，JWT 凭 `Authorization: Bearer`）
+- `/ip-guard/api/access-logs/user-summary/`：按 `user_id` 汇总访问次数、不同 IP 与按 IP 的地理信息（`days` 默认 30、最大 180）
 - `/ip-guard/api/health/`：健康状态（含 Redis 延迟、Provider 熔断失败计数）
 - `/ip-guard/api/auth/jwt/login/`、`/ip-guard/api/auth/jwt/refresh/`、`/ip-guard/api/auth/jwt/logout/`：JWT 登录、刷新与退出（Bearer）
 
 ## 3.7 Vue3 控制台接入
 
-前端目录：`frontend-admin/`  
+前端目录：`django_ip_safeguard/contrib/admin_frontend/`（文档中历史名称 `frontend-admin` 指同一工程）  
 技术栈：Vue3 + Vite + Element Plus + Pinia + Axios
 
 启动命令：
 
 ```bash
-cd frontend-admin
+cd django_ip_safeguard/contrib/admin_frontend
 npm install
 npm run dev
 ```

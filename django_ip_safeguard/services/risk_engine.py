@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from django_ip_safeguard.conf import IpGuardSettings
 from django_ip_safeguard.services.policy_service import DEFAULT_SIGNAL_WEIGHTS
@@ -28,10 +28,16 @@ def _weight(config: IpGuardSettings, key: str) -> float:
     return float(weights.get(key, 0.0))
 
 
+def _is_unknown_country(country_code: Optional[str]) -> bool:
+    c = (country_code or "").strip().upper()
+    return not c or c == "UNKNOWN"
+
+
 def _collect_signals(ip_intel: IpIntel, config: IpGuardSettings) -> Tuple[List[Tuple[str, str, float]], List[str]]:
     """返回 [(信号键, 原因, 分值)] 与 local_risk_reasons。"""
     signals: List[Tuple[str, str, float]] = []
     local_reasons: List[str] = []
+    mode = (getattr(config, "country_mode", None) or "default").lower()
 
     # 风险分本身按权重折算（weight=1.0 即原值），不强行过阈值
     rs = int(ip_intel.risk_score or 0)
@@ -45,10 +51,18 @@ def _collect_signals(ip_intel: IpIntel, config: IpGuardSettings) -> Tuple[List[T
         signals.append(("tag_blocked", f"命中风险标签: {hit_tags}", _weight(config, "tag_blocked")))
 
     country = (ip_intel.country_code or "").upper()
-    if config.allowed_countries and country and country not in config.allowed_countries:
-        signals.append(("country_not_allowed", f"地区不在白名单: {country}", _weight(config, "country_not_allowed")))
-    if config.blocked_countries and country and country in config.blocked_countries:
-        signals.append(("country_blocked", f"地区命中黑名单: {country}", _weight(config, "country_blocked")))
+    # allowlist / blacklist 模式由国家门控单独处理，避免与加权重复计分
+    if mode == "default":
+        if config.allowed_countries and country and country not in config.allowed_countries:
+            signals.append(("country_not_allowed", f"地区不在白名单: {country}", _weight(config, "country_not_allowed")))
+        if config.blocked_countries and country and country in config.blocked_countries:
+            signals.append(("country_blocked", f"地区命中黑名单: {country}", _weight(config, "country_blocked")))
+    elif mode == "allowlist":
+        if config.blocked_countries and country and country in config.blocked_countries:
+            signals.append(("country_blocked", f"地区命中黑名单: {country}", _weight(config, "country_blocked")))
+    else:  # blacklist
+        if config.blocked_countries and country and country in config.blocked_countries:
+            signals.append(("country_blocked", f"地区命中黑名单: {country}", _weight(config, "country_blocked")))
 
     if ip_intel.is_tor:
         local_reasons.append("Tor出口节点")
@@ -71,6 +85,69 @@ def _decide_action(score: float, config: IpGuardSettings) -> str:
     if score >= config.tier_medium:
         return config.medium_action or "block"
     return "allow"
+
+
+def evaluate_country_mode_gate(ip_intel: IpIntel, config: IpGuardSettings) -> Optional[RiskDecision]:
+    """按 country_mode 做明确国家策略；返回 None 表示本层不拦截。"""
+    mode = (getattr(config, "country_mode", None) or "default").lower()
+    if mode == "default":
+        return None
+
+    cc = (ip_intel.country_code or "").strip().upper()
+    blocked = tuple(config.blocked_countries or ())
+    allowed = tuple(config.allowed_countries or ())
+
+    if mode == "allowlist":
+        if not allowed:
+            return None
+        if _is_unknown_country(ip_intel.country_code):
+            if getattr(config, "block_unknown_country", True):
+                return RiskDecision(
+                    allow=False,
+                    reason="国家/地区未知或未识别，未命中允许列表",
+                    should_ban=False,
+                    local_risk_reasons=[],
+                    action="block",
+                    score=0.0,
+                    score_reasons=["国家未知"],
+                )
+            return None
+        if cc not in allowed:
+            return RiskDecision(
+                allow=False,
+                reason=f"国家不在允许列表: {cc}",
+                should_ban=False,
+                local_risk_reasons=[],
+                action="block",
+                score=0.0,
+                score_reasons=[f"不在允许列表: {cc}"],
+            )
+        if blocked and cc in blocked:
+            return RiskDecision(
+                allow=False,
+                reason=f"国家命中禁止列表: {cc}",
+                should_ban=False,
+                local_risk_reasons=[],
+                action="block",
+                score=0.0,
+                score_reasons=[f"命中禁止列表: {cc}"],
+            )
+        return None
+
+    if mode == "blacklist":
+        if blocked and cc and cc in blocked:
+            return RiskDecision(
+                allow=False,
+                reason=f"国家命中黑名单: {cc}",
+                should_ban=False,
+                local_risk_reasons=[],
+                action="block",
+                score=0.0,
+                score_reasons=[f"命中黑名单: {cc}"],
+            )
+        return None
+
+    return None
 
 
 def evaluate_ip_risk_v2(ip_intel: IpIntel, config: IpGuardSettings) -> RiskDecision:
@@ -128,6 +205,22 @@ def evaluate_ip_risk(ip_intel: IpIntel, config: IpGuardSettings) -> RiskDecision
 
     decision = evaluate_ip_risk_v2(ip_intel, config)
     if not decision.allow:
+        return decision
+
+    gated = evaluate_country_mode_gate(ip_intel, config)
+    if gated is not None:
+        return RiskDecision(
+            allow=False,
+            reason=gated.reason,
+            should_ban=False,
+            local_risk_reasons=decision.local_risk_reasons,
+            action="block",
+            score=decision.score,
+            score_reasons=list(decision.score_reasons) + list(gated.score_reasons),
+        )
+
+    mode = (getattr(config, "country_mode", None) or "default").lower()
+    if mode != "default":
         return decision
 
     country_code = (ip_intel.country_code or "").upper()

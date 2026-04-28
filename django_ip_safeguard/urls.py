@@ -3,6 +3,7 @@ from django.urls import path, re_path
 from django_ip_safeguard.views import (
     access_log_export_view,
     access_log_list_view,
+    access_log_user_summary_view,
     api_key_create_view,
     api_key_list_view,
     api_key_logs_view,
@@ -97,6 +98,7 @@ urlpatterns = [
     path("api/ban-list/", ban_list_view, name="ban_list_api"),
     path("api/access-logs/", access_log_list_view, name="access_log_list_api"),
     path("api/access-logs/export/", access_log_export_view, name="access_log_export_api"),
+    path("api/access-logs/user-summary/", access_log_user_summary_view, name="access_log_user_summary_api"),
     path("api/health/", health_view, name="health_api"),
     path("api/i18n/languages/", i18n_lang_list_view, name="i18n_lang_list_api"),
     path("api/i18n/switch/", i18n_lang_switch_view, name="i18n_lang_switch_api"),

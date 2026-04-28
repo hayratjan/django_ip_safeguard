@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from django_ip_safeguard.types import IpIntel
 
@@ -15,14 +16,22 @@ def log_access_decision(
     ip_intel: IpIntel,
     ip_mask_enabled: bool = True,
     ip_mask_keep_prefix: int = 2,
+    user: Optional[object] = None,
+    method: str = "",
 ) -> None:
     if not enabled:
         return
     try:
         from django_ip_safeguard.models import IpAccessLog
 
+        u = user if user is not None and getattr(user, "is_authenticated", False) else None
+        uname = str(getattr(u, "get_username", lambda: "")())[:150] if u else ""
+        meth = (method or "")[:16]
         IpAccessLog.objects.create(
             ip=ip,
+            user=u,
+            username=uname,
+            method=meth,
             country_code=(ip_intel.country_code or "")[:16],
             country_name=(ip_intel.country_name or "")[:64],
             region=(ip_intel.region or "")[:64],
