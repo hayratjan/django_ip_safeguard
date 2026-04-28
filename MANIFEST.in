@@ -1,0 +1,2 @@
+# 将已构建的 Vue 控制台静态资源一并打入 sdist/wheel，便于 pip 安装后可直接访问 /ip-guard/
+recursive-include django_ip_safeguard/contrib/admin_frontend/static *

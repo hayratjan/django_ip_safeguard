@@ -57,6 +57,10 @@ Documentation = "https://github.com/hayratjan/django_ip_safeguard#readme"
 Repository = "https://github.com/hayratjan/django_ip_safeguard.git"
 Issues = "https://github.com/hayratjan/django_ip_safeguard/issues"
 
+[tool.setuptools]
+# 与 MANIFEST.in 配合，把 admin_frontend 构建产物打进发行包
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["django_ip_safeguard*"]
