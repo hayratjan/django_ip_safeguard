@@ -1,10 +1,17 @@
 <template>
   <div ref="rootRef" class="world-ip-viz">
-    <p v-if="!hasData" class="empty-tip">暂无国家/地区维度数据（需开启审计且请求带国家码）</p>
-    <template v-else>
+    <div class="map-wrap">
       <div ref="mapRef" class="chart map" role="img" aria-label="世界地图按国家请求量热力及攻击标点" />
-      <div ref="barRef" class="chart bar" role="img" aria-label="国家请求量条形图" />
-    </template>
+      <p v-if="!hasData" class="empty-footnote">{{ emptyTip }}</p>
+    </div>
+    <div v-if="hasData" ref="barRef" class="chart bar" role="img" aria-label="国家请求量条形图" />
+    <div v-else class="empty-side">
+      <div class="empty-side-card">
+        <div class="empty-side-icon" aria-hidden="true">🌐</div>
+        <div class="empty-side-title">{{ emptyTitle }}</div>
+        <div class="empty-side-desc">{{ emptyTip }}</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -53,6 +60,9 @@ let ro;
 
 const themeStore = useThemeStore();
 const isDark = computed(() => themeStore.isDark);
+
+const emptyTitle = "暂无国家/地区维度数据";
+const emptyTip = "需开启策略「记录数据库审计」，且请求被解析到 ISO2 国家码后才会聚合显示。";
 
 const ISO_ALIAS = { UK: "GB" };
 
@@ -165,7 +175,7 @@ function getThemeColors() {
 
 function renderCharts() {
   disposeCharts();
-  if (!hasData.value || !mapRef.value || !barRef.value) return;
+  if (!mapRef.value) return;
 
   if (!worldMapRegistered) {
     echarts.registerMap("WorldCountry", worldGeo);
@@ -179,11 +189,13 @@ function renderCharts() {
   const tc = getThemeColors();
 
   mapChart = echarts.init(mapRef.value, null, { renderer: "canvas" });
-  mapChart.setOption({
+  const subTextWithData = "热力=总请求 | 红点=攻击来源 | 点击查看日志";
+  const subTextEmpty = "暂无聚合数据，仅展示地图底图";
+  const baseOption = {
     backgroundColor: "transparent",
     title: {
       text: "全球 IP 访问与攻击分布",
-      subtext: "热力=总请求 | 红点=攻击来源 | 点击查看日志",
+      subtext: hasData.value ? subTextWithData : subTextEmpty,
       left: "center",
       top: 8,
       textStyle: { fontSize: 16, color: tc.titleColor, fontWeight: 700 },
@@ -203,7 +215,7 @@ function renderCharts() {
             `<div>允许量：<b style="color:#4ade80">${d.allowed}</b></div>` +
             `<div style="color:#94a3b8;font-size:11px;margin-top:4px">点击查看日志 →</div>`;
         }
-        if (p.data) {
+        if (p.data && p.data.value !== undefined) {
           const cn = p.data.cnName || p.name;
           const blockedInfo = p.data.blocked > 0
             ? `<div>攻击量：<b style="color:#f87171">${p.data.blocked}</b></div>` : "";
@@ -216,19 +228,6 @@ function renderCharts() {
         }
         return p.name;
       },
-    },
-    visualMap: {
-      min: 0,
-      max: maxVal,
-      text: ["多", "少"],
-      realtime: true,
-      calculable: true,
-      orient: "vertical",
-      right: 12,
-      bottom: 40,
-      inRange: { color: tc.inRangeColors },
-      textStyle: { color: tc.visualMapTextColor },
-      seriesIndex: 0,
     },
     geo: {
       map: "WorldCountry",
@@ -246,7 +245,23 @@ function renderCharts() {
         areaColor: tc.areaColor,
       },
     },
-    series: [
+  };
+
+  if (hasData.value) {
+    baseOption.visualMap = {
+      min: 0,
+      max: maxVal,
+      text: ["多", "少"],
+      realtime: true,
+      calculable: true,
+      orient: "vertical",
+      right: 12,
+      bottom: 40,
+      inRange: { color: tc.inRangeColors },
+      textStyle: { color: tc.visualMapTextColor },
+      seriesIndex: 0,
+    };
+    baseOption.series = [
       {
         type: "map",
         map: "WorldCountry",
@@ -267,15 +282,9 @@ function renderCharts() {
         type: "effectScatter",
         coordinateSystem: "geo",
         data: attackData,
-        symbolSize: (val) => {
-          return Math.max(8, Math.min(30, (val[2] / maxBlocked) * 25 + 5));
-        },
+        symbolSize: (val) => Math.max(8, Math.min(30, (val[2] / maxBlocked) * 25 + 5)),
         showEffectOn: "render",
-        rippleEffect: {
-          brushType: "stroke",
-          scale: 3,
-          period: 4,
-        },
+        rippleEffect: { brushType: "stroke", scale: 3, period: 4 },
         label: { show: false },
         itemStyle: {
           color: "#ef4444",
@@ -284,8 +293,12 @@ function renderCharts() {
         },
         zlevel: 1,
       },
-    ],
-  });
+    ];
+  } else {
+    baseOption.series = [];
+  }
+
+  mapChart.setOption(baseOption, true);
 
   mapChart.on("click", (params) => {
     if (params.data) {
@@ -294,7 +307,14 @@ function renderCharts() {
     }
   });
 
+  if (!hasData.value) {
+    ro = new ResizeObserver(() => mapChart?.resize());
+    if (rootRef.value) ro.observe(rootRef.value);
+    return;
+  }
+
   const top = normalizedRows.value.slice(0, 15);
+  if (!barRef.value) return;
   barChart = echarts.init(barRef.value, null, { renderer: "canvas" });
   barChart.setOption({
     backgroundColor: "transparent",
@@ -401,16 +421,36 @@ onUnmounted(() => disposeCharts());
   border: 1px solid var(--ip-border, #dcdfe6);
 }
 
-.empty-tip {
-  margin: 0;
-  padding: 48px 16px;
-  text-align: center;
-  color: var(--ip-text-secondary, #94a3b8);
-  font-size: 14px;
-  background: var(--ip-bg-card-hover, #f8fafc);
-  border-radius: 8px;
-  border: 1px dashed var(--ip-border, #e2e8f0);
+.map-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
+
+.empty-footnote {
+  margin: 6px 4px 0;
+  font-size: 12px;
+  color: var(--ip-text-secondary, #94a3b8);
+  line-height: 1.4;
+}
+
+.empty-side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-side-card {
+  width: 100%;
+  text-align: center;
+  padding: 32px 18px;
+  border-radius: 10px;
+  background: var(--ip-bg-card-hover, #f8fafc);
+  border: 1px dashed var(--ip-border, #e2e8f0);
+  color: var(--ip-text-secondary, #94a3b8);
+}
+.empty-side-icon { font-size: 32px; margin-bottom: 10px; }
+.empty-side-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--ip-text, #1e293b); }
+.empty-side-desc { font-size: 12px; line-height: 1.5; }
 
 .chart {
   width: 100%;
