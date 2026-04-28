@@ -119,28 +119,45 @@ IP_GUARD = {
 5. GeoIP rules
 6. Default policy
 
-### Policy Actions
+### Policy Actions (v0.2.0)
 
-| Action | HTTP Status | Description |
-|--------|-------------|-------------|
-| allow | 200 | Request allowed, continue processing |
-| block | 403 | Request blocked with Forbidden |
-| challenge | 403 | Blocked with CAPTCHA/challenge |
-| rate_limit | 429 | Too many requests |
+| Action | HTTP Status | Bans IP? | Description |
+|--------|-------------|----------|-------------|
+| `allow` | 200 | no | Pass through |
+| `log_only` | 200 | no | Just log, behave like allow (great for canary roll-out) |
+| `rate_limit` | 429 | no | Soft throttle (matches `rate_limit_per_minute` semantics) |
+| `challenge` | `challenge_status_code` (default 403) | no | Returns custom status for CAPTCHA / 2FA flows |
+| `block` | `block_status_code` (default 403) | no | Reject the request |
+| `ban` | `block_status_code` | yes (`ban_ttl`) | Reject and write a Redis ban entry |
 
-## Custom Response
+The middleware honours the `Accept` request header and returns either JSON (APIs) or a tiny HTML page (browsers).
 
-You can customize the blocked response:
+## Skip paths and multi-policy routing
+
+### Skip paths
+
+Health checks / webhooks / probes can bypass IP Guard entirely:
 
 ```python
 IP_GUARD = {
-    "BLOCK_RESPONSE": {
-        "status_code": 403,
-        "content": "Your IP has been blocked",
-        "content_type": "text/plain",
-    }
+    "SKIP_PATH_PREFIXES": ["/healthz", "/internal/probe"],
 }
 ```
+
+### Multi-policy routing
+
+Create multiple `IpGuardPolicy` rows. Per request the middleware:
+
+1. Filters disabled policies;
+2. Checks `match_host_regex`, `match_path_prefixes`, `match_methods` (empty means "no constraint");
+3. Picks the lowest-priority match;
+4. Falls back to `name="default"` when no row matches.
+
+Policy saves are broadcast through Redis pubsub (`ip_guard:policy:invalidate`); every worker drops its cache within milliseconds.
+
+## Custom Response
+
+`block_status_code` and `challenge_status_code` directly control the HTTP status. The body is built by `services/action_executor.py` based on the request `Accept` header.
 
 ## Logging
 

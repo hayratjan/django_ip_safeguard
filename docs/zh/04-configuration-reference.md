@@ -377,3 +377,85 @@ IP_GUARD = {
     },
 }
 ```
+
+## 策略引擎 v2（v0.2.0+）
+
+策略引擎 v2 把"风险阈值"细化为"加权打分 + 分级动作"，并支持多策略路由。下列字段既可写在 `IP_GUARD` 字典里作为全局默认，也可按策略行覆盖（数据库 `IpGuardPolicy` 同名字段优先于全局配置）。
+
+### 跳过路径与基础
+
+| 配置项 | 默认 | 说明 |
+|--------|------|------|
+| `SKIP_PATH_PREFIXES` | `[]` | 跳过中间件判定的路径前缀（如 `/healthz`），适合健康检查 / Webhook |
+
+### 多策略路由
+
+| 配置项 | 默认 | 说明 |
+|--------|------|------|
+| `POLICY_NAME` | `default` | 全局兜底策略名，也是 ORM 行 `name` 字段 |
+| `POLICY_PRIORITY` | `10000` | 数值越小越优先；自建策略请填更小值 |
+| `MATCH_HOST_REGEX` | `""` | 命中 `request.get_host()` 去掉端口后的主机名才生效；空表示不限制 |
+| `MATCH_PATH_PREFIXES` | `[]` | 路径前缀；任一命中即生效；空表示不限制 |
+| `MATCH_METHODS` | `[]` | HTTP 方法白名单；空表示不限制 |
+
+### 加权分与分级动作
+
+| 配置项 | 默认 | 说明 |
+|--------|------|------|
+| `TIER_MEDIUM` | `40` | 中等风险阈值；`score < TIER_MEDIUM` 时直接放行 |
+| `TIER_HIGH` | `70` | 高风险阈值；`score >= TIER_HIGH` 时执行 `HIGH_ACTION` |
+| `MEDIUM_ACTION` | `block` | 中等风险动作（`allow` / `log_only` / `rate_limit` / `challenge` / `block` / `ban`） |
+| `HIGH_ACTION` | `ban` | 高风险动作 |
+| `CHALLENGE_STATUS_CODE` | `403` | `action=challenge` 时返回的状态码，建议 `429` |
+| `SIGNAL_WEIGHTS` | 见下表 | 各风险信号的权重；策略行 `signal_weights` 可逐条覆盖 |
+
+#### 默认信号权重 `SIGNAL_WEIGHTS`
+
+| 信号键 | 默认权重 | 命中时贡献 | 说明 |
+|--------|----------|-----------|------|
+| `risk_score` | `1.0` | `risk_score × 1` | 情报源原始分（0~100） |
+| `tag_blocked` | `50.0` | 50 | 命中 `BLOCKED_RISK_TAGS` 中任一 |
+| `country_blocked` | `60.0` | 60 | 命中 `BLOCKED_COUNTRIES` |
+| `country_not_allowed` | `60.0` | 60 | 配置了 `ALLOWED_COUNTRIES` 但当前国家不在白名单 |
+| `geo_pool` | `30.0` | 30 | 命中 GEO 池规则（china/international） |
+| `rate_limit_hit` | `40.0` | 40 | 触发限速 |
+| `reputation_rising` | `20.0` | 20 | IP 信誉持续走低（v0.2.x 后续版本启用） |
+| `tor` | `35.0` | 35 | Tor 出口节点 |
+| `datacenter` | `15.0` | 15 | 数据中心 ASN |
+| `botnet` | `70.0` | 70 | 已知 botnet IP |
+
+> 不需要的信号将权重设为 `0` 即可。
+
+### 多策略示例（settings.py 配 + DB 多行）
+
+```python
+# settings.py：全局默认（兜底策略 + 通用阈值）
+IP_GUARD = {
+    "ENABLED": True,
+    "TIER_MEDIUM": 40,
+    "TIER_HIGH": 70,
+    "MEDIUM_ACTION": "block",
+    "HIGH_ACTION": "ban",
+    "CHALLENGE_STATUS_CODE": 429,
+    "SKIP_PATH_PREFIXES": ["/healthz"],
+}
+```
+
+```python
+# 通过 Admin 或 ORM 创建策略行（priority 越小越优先）：
+from django_ip_safeguard.models import IpGuardPolicy
+
+IpGuardPolicy.objects.create(
+    name="api-write",
+    priority=100,
+    match_host_regex=r"^api\.",
+    match_path_prefixes=["/api/"],
+    match_methods=["POST", "PUT", "DELETE"],
+    medium_action="challenge",
+    high_action="ban",
+    tier_thresholds={"medium": 30, "high": 60},
+    signal_weights={"tag_blocked": 80, "tor": 50},
+)
+```
+
+策略保存时会在 `IpGuardPolicySnapshot` 写入"变更前/变更后"快照（含操作人），便于审计与回滚。
