@@ -1,12 +1,17 @@
 from django_ip_safeguard.conf import IpGuardSettings
-from django_ip_safeguard.services.policy_service import _POLICY_CACHE, invalidate_policy_cache, load_effective_policy
+from django_ip_safeguard.services.policy_service import (
+    _POLICY_CACHE,
+    invalidate_policy_cache,
+    load_effective_policy,
+)
 
 
 def test_invalidate_policy_cache():
-    _POLICY_CACHE["data"] = {"x": 1}
+    _POLICY_CACHE["policies"] = [object()]
     _POLICY_CACHE["expires_at"] = 999999999
-    invalidate_policy_cache()
-    assert _POLICY_CACHE["data"] is None
+    # broadcast=False 避免依赖 Redis
+    invalidate_policy_cache(broadcast=False)
+    assert _POLICY_CACHE["policies"] is None
     assert _POLICY_CACHE["expires_at"] == 0.0
 
 
