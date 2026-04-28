@@ -105,22 +105,26 @@
           v-model="form.allowed_countries"
           multiple
           filterable
-          allow-create
-          default-first-option
+          collapse-tags
+          collapse-tags-tooltip
           :placeholder="t('policy.allowedCountriesPlaceholder')"
           style="width: 100%"
-        />
+        >
+          <el-option v-for="opt in countryOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
       </el-form-item>
       <el-form-item :label="t('policy.blockedCountries')">
         <el-select
           v-model="form.blocked_countries"
           multiple
           filterable
-          allow-create
-          default-first-option
+          collapse-tags
+          collapse-tags-tooltip
           :placeholder="t('policy.blockedCountriesPlaceholder')"
           style="width: 100%"
-        />
+        >
+          <el-option v-for="opt in countryOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
       </el-form-item>
       <el-form-item :label="t('policy.ipWhitelist')">
         <el-select
@@ -239,10 +243,10 @@ import {
   syncGeoPoolsApi,
   updatePolicyByNameApi,
 } from "../api";
-import { COMMON_ISO2 } from "../constants/policyGeo";
+import { COMMON_ISO2, COUNTRY_ISO2_OPTIONS } from "../constants/policyGeo";
 import { useAuthStore } from "../stores/auth";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const actionChoices = ["allow", "log_only", "rate_limit", "challenge", "block", "ban"];
 
@@ -294,6 +298,24 @@ const newPolicyName = ref("");
 const authStore = useAuthStore();
 const canEditPolicy = computed(() => authStore.hasPerm("django_ip_safeguard.change_ipguardpolicy"));
 const canViewPolicy = computed(() => authStore.hasPerm("django_ip_safeguard.view_ipguardpolicy"));
+
+/** 国家选择项：ISO2 + 本地化国家名（浏览器不支持时退化为 ISO2） */
+const countryOptions = computed(() => {
+  const lang = String(locale.value || "zh").toLowerCase().startsWith("zh") ? "zh-Hans" : "en";
+  let display = null;
+  try {
+    display = new Intl.DisplayNames([lang], { type: "region" });
+  } catch {
+    display = null;
+  }
+  return COUNTRY_ISO2_OPTIONS.map((code) => {
+    const name = display ? display.of(code) : "";
+    return {
+      value: code,
+      label: name && name !== code ? `${name} (${code})` : code,
+    };
+  });
+});
 
 const mergeCommonAllowed = () => {
   const s = new Set([...(form.allowed_countries || []), ...COMMON_ISO2]);

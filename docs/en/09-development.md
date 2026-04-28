@@ -72,7 +72,7 @@ Use the **demo2** sample so dependencies come only from the wheel (similar to Py
 cd demo2
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install ../dist/django_ip_safeguard-0.3.0-py3-none-any.whl
+pip install ../dist/django_ip_safeguard-0.3.1-py3-none-any.whl
 # or pip install -r requirements-from-dist.txt (adjust wheel version/path if needed)
 python manage.py migrate
 python manage.py check

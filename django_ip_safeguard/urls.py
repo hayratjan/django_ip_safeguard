@@ -52,7 +52,11 @@ from django_ip_safeguard.views import (
     user_stats_chart_view,
     verify_email_view,
 )
-from django_ip_safeguard.contrib.admin_frontend.views import serve_frontend_build_file, serve_frontend_spa
+from django_ip_safeguard.contrib.admin_frontend.views import (
+    serve_frontend_build_file,
+    serve_frontend_spa,
+    serve_frontend_static_file,
+)
 
 app_name = "django_ip_safeguard"
 
@@ -113,6 +117,12 @@ urlpatterns = [
     path("api/admin/users/<int:user_id>/", django_admin_user_detail_view, name="django_admin_user_detail_api"),
     # Vue 构建产物与 SPA（须在 api/ 之后，避免吞掉接口路由）
     re_path(r"^assets/(?P<path>.+)$", serve_frontend_build_file, name="admin_frontend_assets"),
+    # 根目录静态文件（如 /ip-guard/logo.svg、/ip-guard/favicon.ico）
+    re_path(
+        r"^(?P<path>(?!api/)(?!assets/).+\.(?:svg|png|jpg|jpeg|gif|ico|webp|txt|map|json|webmanifest|woff|woff2|ttf|eot))$",
+        serve_frontend_static_file,
+        name="admin_frontend_static",
+    ),
     path("", serve_frontend_spa, name="dashboard"),
     re_path(r"^(?!api/)(?!assets/).+$", serve_frontend_spa, name="admin_frontend_spa"),
 ]

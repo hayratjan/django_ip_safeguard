@@ -71,7 +71,7 @@ python -m build   # 生成 dist/django_ip_safeguard-<版本>-py3-none-any.whl
 cd demo2
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install ../dist/django_ip_safeguard-0.3.0-py3-none-any.whl
+pip install ../dist/django_ip_safeguard-0.3.1-py3-none-any.whl
 # 或 pip install -r requirements-from-dist.txt（需在文件中核对 wheel 版本路径）
 python manage.py migrate
 python manage.py check

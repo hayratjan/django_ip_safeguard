@@ -41,3 +41,16 @@ export const COMMON_ISO2 = [
   "CL",
   "CO",
 ];
+
+/** 策略页国家下拉：覆盖常见国家，支持搜索与多选 */
+export const COUNTRY_ISO2_OPTIONS = [
+  "AE", "AR", "AT", "AU", "BE", "BG", "BH", "BR", "BY", "CA",
+  "CH", "CL", "CN", "CO", "CZ", "DE", "DK", "EG", "ES", "FI",
+  "FR", "GB", "GR", "HK", "HR", "HU", "ID", "IE", "IL", "IN",
+  "IQ", "IR", "IS", "IT", "JO", "JP", "KE", "KR", "KW", "KZ",
+  "LB", "LK", "LT", "LU", "LV", "MA", "MD", "ME", "MG", "MK",
+  "MM", "MN", "MO", "MT", "MX", "MY", "NG", "NL", "NO", "NP",
+  "NZ", "OM", "PE", "PH", "PK", "PL", "PT", "QA", "RO", "RS",
+  "RU", "SA", "SE", "SG", "SI", "SK", "TH", "TN", "TR", "TW",
+  "UA", "US", "UY", "UZ", "VE", "VN", "ZA",
+];

@@ -50,6 +50,41 @@ def serve_frontend_build_file(request, path):
         return HttpResponse(f.read(), content_type=content_type)
 
 
+def serve_frontend_static_file(request, path):
+    """提供前端静态根目录文件（如 logo.svg、favicon.ico）"""
+    static_dir = _get_frontend_static_dir()
+    file_path = os.path.normpath(os.path.join(static_dir, path))
+    if not _is_path_under(static_dir, file_path):
+        return HttpResponse("Not Found", status=404)
+    if not (os.path.exists(file_path) and os.path.isfile(file_path)):
+        return HttpResponse("Not Found", status=404)
+    ext = os.path.splitext(path)[1].lower()
+    # 与 assets 静态文件保持一致的 MIME 推断
+    content_types = {
+        ".html": "text/html",
+        ".htm": "text/html",
+        ".js": "application/javascript",
+        ".mjs": "application/javascript",
+        ".css": "text/css",
+        ".json": "application/json",
+        ".map": "application/json",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".ttf": "font/ttf",
+        ".eot": "application/vnd.ms-fontobject",
+        ".webmanifest": "application/manifest+json",
+        ".txt": "text/plain; charset=utf-8",
+    }
+    content_type = content_types.get(ext, "application/octet-stream")
+    with open(file_path, "rb") as f:
+        return HttpResponse(f.read(), content_type=content_type)
+
+
 @require_http_methods(["GET", "HEAD"])
 def serve_frontend_spa(request, path=""):
     """Vue 单页：除 /api、/assets 外的路径统一返回 index.html"""
