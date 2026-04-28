@@ -9,9 +9,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        # Django>=6.0 仅支持较新 Python，避免在不兼容版本上安装失败
-        python-version: ["3.12", "3.13"]
+        # 与 pyproject.toml 的 Django>=4.2,<5.0 兼容
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
