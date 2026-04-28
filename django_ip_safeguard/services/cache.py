@@ -6,12 +6,26 @@ import redis
 
 from django_ip_safeguard.types import IpIntel
 
+# 策略变更广播通道：所有 worker 收到后立刻清自己的进程内策略缓存
+POLICY_INVALIDATE_CHANNEL = "ip_guard:policy:invalidate"
+
 
 class RedisCacheService:
     """Redis 缓存服务，封装 IP 情报与封禁状态读写。"""
 
     def __init__(self, redis_url: str):
         self.client = redis.Redis.from_url(redis_url, decode_responses=True)
+
+    def publish_policy_invalidate(self) -> None:
+        """广播策略失效消息（多 worker 实时感知）。"""
+        try:
+            self.client.publish(POLICY_INVALIDATE_CHANNEL, "1")
+        except Exception:  # noqa: BLE001
+            return None
+
+    def pubsub(self):
+        """返回原生 pubsub 对象，由调用方负责订阅与生命周期。"""
+        return self.client.pubsub()
 
     @staticmethod
     def _intel_key(ip: str) -> str:

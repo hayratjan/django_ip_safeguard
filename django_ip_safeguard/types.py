@@ -27,13 +27,18 @@ class IpIntel:
 
 @dataclass
 class RiskDecision:
-    """风险判定结果。"""
+    """风险判定结果（兼容旧字段 allow/should_ban；新增 action/score 供分级策略）。"""
 
     allow: bool
     reason: str
     should_ban: bool = False
     ban_ttl: Optional[int] = None
     local_risk_reasons: List[str] = field(default_factory=list)
+    # 策略引擎 v2：加权分与动作
+    action: str = "allow"
+    score: float = 0.0
+    score_reasons: List[str] = field(default_factory=list)
+    challenge_status_code: Optional[int] = None
 
 
 @dataclass

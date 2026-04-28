@@ -90,6 +90,22 @@ class IpGuardSettings:
     geo_china_pool_backup_urls: Tuple[str, ...] = ()
     geo_international_pool_backup_urls: Tuple[str, ...] = ()
 
+    # 中间件：路径前缀完全跳过 IP 防护（在 enabled 检查之后最早返回）
+    skip_path_prefixes: Tuple[str, ...] = ()
+
+    # 策略路由与分级（策略中心多行 / 单 default 时均由 policy_service 填充）
+    policy_name: str = "default"
+    policy_priority: int = 10_000
+    match_host_regex: str = ""
+    match_path_prefixes: Tuple[str, ...] = ()
+    match_methods: Tuple[str, ...] = ()
+    tier_medium: int = 40
+    tier_high: int = 70
+    signal_weights: Mapping[str, float] = field(default_factory=dict)
+    medium_action: str = "block"
+    high_action: str = "ban"
+    challenge_status_code: int = 403
+
 
 def _to_tuple(value: Optional[object]) -> Tuple[str, ...]:
     if value is None:
@@ -296,4 +312,16 @@ def get_settings() -> IpGuardSettings:
         geo_international_pool_backup_urls=_to_str_tuple(
             getattr(settings, "IP_GUARD_GEO_INTERNATIONAL_POOL_BACKUP_URLS", ())
         ),
+        skip_path_prefixes=_to_str_tuple(getattr(settings, "IP_GUARD_SKIP_PATH_PREFIXES", ())),
+        policy_name="default",
+        policy_priority=10_000,
+        match_host_regex="",
+        match_path_prefixes=(),
+        match_methods=(),
+        tier_medium=40,
+        tier_high=70,
+        signal_weights={},
+        medium_action="block",
+        high_action="ban",
+        challenge_status_code=int(getattr(settings, "IP_GUARD_CHALLENGE_STATUS_CODE", 403)),
     )
