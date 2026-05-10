@@ -18,13 +18,34 @@ stages:
             # 构建产物获取路径，是指代码编译完毕之后构建物的所在路径
             path:
               - ./
+        # 悬镜 / Gitee 部分环境下 cwd 为 /root/workspace，代码在子目录；多条 command 可能各自独立 shell，故合并为一段脚本并先定位仓库根
         commands:
-          - python3 -m pip install --upgrade pip
-          - pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-          - pip3 install -r requirements.txt
-          # 将本仓库以可编辑模式安装，便于悬镜扫描站点包及后续步骤引用包元数据
-          - pip3 install -e .
-          - python3 ./main.py
+          - |
+            set -e
+            locate_repo_root() {
+              if [ -f pyproject.toml ] && [ -f requirements.txt ]; then return 0; fi
+              if [ -n "${GITEE_REPO:-}" ]; then
+                for d in "$GITEE_REPO" "/root/workspace/$GITEE_REPO" "./$GITEE_REPO"; do
+                  if [ -d "$d" ] && [ -f "$d/pyproject.toml" ] && [ -f "$d/requirements.txt" ]; then cd "$d"; return 0; fi
+                done
+              fi
+              found="$(find /root/workspace -maxdepth 8 -name pyproject.toml -type f 2>/dev/null | head -n 1)"
+              if [ -z "$found" ]; then found="$(find "$(pwd)" -maxdepth 8 -name pyproject.toml -type f 2>/dev/null | head -n 1)"; fi
+              if [ -n "$found" ]; then
+                cd "$(dirname "$found")"
+                [ -f requirements.txt ] && return 0
+              fi
+              echo "错误: 未定位到仓库根（需同时存在 pyproject.toml 与 requirements.txt）。pwd=$(pwd) GITEE_REPO=${GITEE_REPO:-}" >&2
+              ls -la /root/workspace 2>/dev/null || ls -la >&2
+              exit 1
+            }
+            locate_repo_root
+            echo "仓库根目录: $(pwd)"
+            python3 -m pip install --upgrade pip
+            pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+            pip3 install -r requirements.txt
+            pip3 install -e .
+            python3 ./main.py
       - step: publish@general_artifacts
         name: publish_general_artifacts
         displayName: 上传制品
