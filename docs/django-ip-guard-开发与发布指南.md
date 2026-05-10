@@ -333,10 +333,9 @@ npm run dev
 
 仓库 [.workflow/branch-pipeline.yml](../.workflow/branch-pipeline.yml)、[pr-pipeline.yml](../.workflow/pr-pipeline.yml)、[master-pipeline.yml](../.workflow/master-pipeline.yml) 使用 Gitee **build@python** 模板：先 `pip install -r requirements.txt`，再 **`pip install -e .`** 安装本包，最后执行 **`python3 ./main.py`**。
 
-- 根目录 [main.py](../main.py) 为上述模板要求的构建入口，对 `django_ip_safeguard` 做 `compileall` 语法校验；**悬镜**等插件在 Python 步骤完成后会继续扫描工作区，若缺少 `main.py` 会在执行 `step.sh` 前即失败。
-- 流水线 **Python 版本** 与 `pyproject.toml` 中 `requires-python` 对齐（当前为 **3.10+**），勿再使用 3.9，以免依赖解析或运行与声明不一致。
-- 部分环境下 **build@python** 的初始工作目录为 `/root/workspace`，而检出代码在子目录。具体命令已抽到 [scripts/gitee-python-build.sh](../scripts/gitee-python-build.sh)，YAML 内用 `find` 解析该脚本的绝对路径再执行，避免相对路径 `scripts/...` 在错误 cwd 下失效。
-- **悬镜**附带的 `step.sh` 会尝试 `cp …/admin_frontend/node_modules/.bin/rollup`；CI 未执行 `npm install` 时该文件不存在会报错。构建脚本中在 `pip install -e .` 之后会优先在 `admin_frontend` 下执行 **`npm ci`**（有 `npm` 且存在 `package-lock.json` 时）；若无 `npm` 或安装失败，则创建**最小占位**的 `rollup` 可执行文件与 `.bin` 符号链接，仅满足拷贝路径存在（真实前端发布仍应在本地或独立 Node 步骤执行 `npm run build`）。
+- 根目录 [main.py](../main.py) 为 **build@python** 模板常见入口：对 `django_ip_safeguard` 做 `compileall`；并在 **`python3 ./main.py` 返回前** 尽量保证 `admin_frontend/node_modules/.bin/rollup` 存在（优先 `npm ci`，否则最小占位），以便 **悬镜 OpenSCA** 在用户命令结束后执行平台 `step.sh` 时拷贝该路径不失败。
+- 流水线 **Python 版本** 与 `pyproject.toml` 中 `requires-python` 对齐（当前为 **3.10+**）。
+- **YAML 保持 Gitee 模板式直列命令**（`pip` → `pip install -e .` → `main.py`），不再内嵌自定义 `find`/外部 shell 构建脚本，便于与官方 **OpenSCA** 扫描流程对齐。若流水线工作目录不是仓库根，请在 Gitee 流水线 **代码源 / 工作目录** 中配置为检出仓库根目录。
 
 ---
 
