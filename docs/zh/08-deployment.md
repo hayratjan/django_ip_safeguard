@@ -203,6 +203,14 @@ stderr_logfile=/var/log/celery_error.log
 
 ## Docker 部署
 
+### 根目录 `requirements.txt`（如何维护）
+
+- **事实来源**：运行时依赖以仓库根目录 [pyproject.toml](../../pyproject.toml) 中 `[project] dependencies` 为准；根目录 `requirements.txt` 为锁定版本后的派生文件，用于 Docker 等可复现安装，**不要与 `pyproject.toml` 手写双份维护**。
+- **更新流程**：先修改 `pyproject.toml`，再在仓库根执行其一即可重新生成：
+  - 推荐（与当前仓库生成方式一致，解析目标为 Python 3.12）：`uv pip compile pyproject.toml -o requirements.txt --python 3.12`
+  - 或在使用 **pip-tools** 且 Python **≥3.10** 的环境中：`pip-compile pyproject.toml -o requirements.txt`
+- **可选 GeoIP2**：若需把 `[project.optional-dependencies]` 中的 `geoip2` 打进同一份文件，可使用 `uv pip compile pyproject.toml -o requirements.txt --python 3.12 --extra geoip2`，或 `pip-compile pyproject.toml --extra geoip2 -o requirements.txt`。
+
 ### Dockerfile
 
 ```dockerfile

@@ -203,6 +203,15 @@ stderr_logfile=/var/log/celery_error.log
 
 ## Docker Deployment
 
+### Root `requirements.txt` (maintenance)
+
+Runtime dependencies are defined in the repo root `pyproject.toml` under `[project] dependencies`. The root `requirements.txt` is a **generated lockfile** for reproducible installs (e.g. Docker). After changing `pyproject.toml`, regenerate from the repo root, for example:
+
+- `uv pip compile pyproject.toml -o requirements.txt --python 3.12` (matches how the file is produced in this repo), or
+- `pip-compile pyproject.toml -o requirements.txt` with **pip-tools** on Python **3.10+**.
+
+To include the optional `geoip2` extra: add `--extra geoip2` to the command above.
+
 ### Dockerfile
 
 ```dockerfile
