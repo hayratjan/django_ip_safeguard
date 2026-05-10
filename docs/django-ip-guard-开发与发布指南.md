@@ -335,7 +335,8 @@ npm run dev
 
 - 根目录 [main.py](../main.py) 为上述模板要求的构建入口，对 `django_ip_safeguard` 做 `compileall` 语法校验；**悬镜**等插件在 Python 步骤完成后会继续扫描工作区，若缺少 `main.py` 会在执行 `step.sh` 前即失败。
 - 流水线 **Python 版本** 与 `pyproject.toml` 中 `requires-python` 对齐（当前为 **3.10+**），勿再使用 3.9，以免依赖解析或运行与声明不一致。
-- 部分环境下 **build@python** 的初始工作目录为 `/root/workspace`，而检出代码在子目录（如 `…/owner/repo`）。YAML 中已将「定位仓库根 + 安装依赖 + `main.py`」合并为**同一段 shell 脚本**（先尝试当前目录、`$GITEE_REPO`、`/root/workspace/$GITEE_REPO`，再 `find` 含 `pyproject.toml` 与 `requirements.txt` 的目录），避免逐条 `command` 各自 `cd` 不生效或相对路径找不到文件。
+- 部分环境下 **build@python** 的初始工作目录为 `/root/workspace`，而检出代码在子目录。具体命令已抽到 [scripts/gitee-python-build.sh](../scripts/gitee-python-build.sh)，YAML 内用 `find` 解析该脚本的绝对路径再执行，避免相对路径 `scripts/...` 在错误 cwd 下失效。
+- **悬镜**附带的 `step.sh` 会尝试 `cp …/admin_frontend/node_modules/.bin/rollup`；CI 未执行 `npm install` 时该文件不存在会报错。构建脚本中在 `pip install -e .` 之后会优先在 `admin_frontend` 下执行 **`npm ci`**（有 `npm` 且存在 `package-lock.json` 时）；若无 `npm` 或安装失败，则创建**最小占位**的 `rollup` 可执行文件与 `.bin` 符号链接，仅满足拷贝路径存在（真实前端发布仍应在本地或独立 Node 步骤执行 `npm run build`）。
 
 ---
 
