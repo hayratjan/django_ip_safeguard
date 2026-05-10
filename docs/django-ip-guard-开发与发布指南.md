@@ -333,9 +333,10 @@ npm run dev
 
 仓库 [.workflow/branch-pipeline.yml](../.workflow/branch-pipeline.yml)、[pr-pipeline.yml](../.workflow/pr-pipeline.yml)、[master-pipeline.yml](../.workflow/master-pipeline.yml) 使用 Gitee **build@python** 模板：先 `pip install -r requirements.txt`，再 **`pip install -e .`** 安装本包，最后执行 **`python3 ./main.py`**。
 
-- 根目录 [main.py](../main.py) 为 **build@python** 模板常见入口：对 `django_ip_safeguard` 做 `compileall`；并在 **`python3 ./main.py` 返回前** 尽量保证 `admin_frontend/node_modules/.bin/rollup` 存在（优先 `npm ci`，否则最小占位），以便 **悬镜 OpenSCA** 在用户命令结束后执行平台 `step.sh` 时拷贝该路径不失败。
+- 根目录 [main.py](../main.py) 为 **build@python** 模板常见入口：对 `django_ip_safeguard` 做 `compileall`；并在 **`python3 ./main.py` 返回前** 尽量保证 `admin_frontend/node_modules/.bin/rollup` 存在（优先 `npm ci`，否则最小占位），避免 **build@python** 插件自带的 `step.sh` 拷贝该路径时报错。
 - 流水线 **Python 版本** 与 `pyproject.toml` 中 `requires-python` 对齐（当前为 **3.10+**）。
-- **YAML 保持 Gitee 模板式直列命令**（`pip` → `pip install -e .` → `main.py`），不再内嵌自定义 `find`/外部 shell 构建脚本，便于与官方 **OpenSCA** 扫描流程对齐。若流水线工作目录不是仓库根，请在 Gitee 流水线 **代码源 / 工作目录** 中配置为检出仓库根目录。
+- **YAML 保持 Gitee 模板式直列命令**（`pip` → `pip install -e .` → `main.py`）。若流水线工作目录不是仓库根，请在 Gitee **代码源 / 工作目录** 中配置为检出仓库根目录。
+- **为何跑完没有 OpenSCA / 悬镜报告**：根据 [Gitee 帮助中心 · OpenSCA 开源组件检测](https://help.gitee.com/enterprise/pipeline/plugin/open-sca)，OpenSCA 是流水线 **武器库中的独立插件任务**，需填写「要检测的文件或目录路径」（如 `./`），运行后在 **构建详情** 中查看扫描报告。当前 `.workflow` 里只有 `build@python` 与制品上传，**没有添加 OpenSCA 步骤**，因此不会出现该插件的专项报告；`build@python` 日志里的 `step.sh` 属于 Python 构建插件内部流程，**不能替代** OpenSCA 插件。若使用企业版「代码扫描 / 悬镜」统一入口，还需在仓库或组织设置里绑定对应扫描任务并查看其独立报告页。
 
 ---
 

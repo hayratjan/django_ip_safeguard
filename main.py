@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Gitee build@python 步骤入口脚本（悬镜 / OpenSCA 等会在用户命令后执行平台 step.sh）。
+Gitee build@python 步骤入口脚本。
 
 依赖安装请在流水线 YAML 中先于本脚本执行。本脚本：compileall 校验；并尽量保证
-admin_frontend/node_modules/.bin/rollup 存在，避免悬镜 step.sh 拷贝该路径失败。
+admin_frontend/node_modules/.bin/rollup 存在，避免 build@python 插件自带的 step.sh
+在收集/拷贝前端依赖路径时失败。
+
+说明：Gitee 文档中的「OpenSCA 开源组件检测」是流水线里单独添加的插件任务，
+与 build@python 内置的 step.sh 不是同一回事；要看 OpenSCA/SBOM 报告必须在流水线
+中显式增加该插件步骤（见 Gitee 帮助中心 OpenSCA 插件页）。
 """
 from __future__ import annotations
 

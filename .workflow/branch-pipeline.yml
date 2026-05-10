@@ -15,7 +15,7 @@ stages:
           - name: BUILD_ARTIFACT
             path:
               - ./
-        # 悬镜 OpenSCA 等：保持 Gitee 模板式直列命令，用户命令结束后由平台执行 step.sh 扫描
+        # build@python 自带 step.sh（制品/环境相关）；OpenSCA 报告需单独添加「OpenSCA 开源组件检测」插件步骤
         commands:
           - python3 -m pip install --upgrade pip
           - pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
