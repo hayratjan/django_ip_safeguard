@@ -9,7 +9,8 @@ stages:
       - step: build@python
         name: build_python
         displayName: Python 构建
-        pythonVersion: '3.9'
+        # 与 pyproject.toml 中 requires-python >=3.10 一致，避免 3.9 下解析/运行不兼容
+        pythonVersion: '3.10'
         # 非必填字段，开启后表示将构建产物暂存，但不会上传到制品库中，7天后自动清除
         artifacts:
             # 构建产物名字，作为产物的唯一标识可向下传递，支持自定义，默认为BUILD_ARTIFACT。在下游可以通过${BUILD_ARTIFACT}方式引用来获取构建物地址
@@ -21,6 +22,8 @@ stages:
           - python3 -m pip install --upgrade pip
           - pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           - pip3 install -r requirements.txt
+          # 将本仓库以可编辑模式安装，便于悬镜扫描站点包及后续步骤引用包元数据
+          - pip3 install -e .
           - python3 ./main.py
       - step: publish@general_artifacts
         name: publish_general_artifacts

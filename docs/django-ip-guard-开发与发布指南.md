@@ -329,6 +329,13 @@ npm run dev
 4. 更新 `README` 与本指南。
 5. 更新 `CHANGELOG`。
 
+## 5.4 Gitee 流水线与 `main.py`
+
+仓库 [.workflow/branch-pipeline.yml](../.workflow/branch-pipeline.yml)、[pr-pipeline.yml](../.workflow/pr-pipeline.yml)、[master-pipeline.yml](../.workflow/master-pipeline.yml) 使用 Gitee **build@python** 模板：先 `pip install -r requirements.txt`，再 **`pip install -e .`** 安装本包，最后执行 **`python3 ./main.py`**。
+
+- 根目录 [main.py](../main.py) 为上述模板要求的构建入口，对 `django_ip_safeguard` 做 `compileall` 语法校验；**悬镜**等插件在 Python 步骤完成后会继续扫描工作区，若缺少 `main.py` 会在执行 `step.sh` 前即失败。
+- 流水线 **Python 版本** 与 `pyproject.toml` 中 `requires-python` 对齐（当前为 **3.10+**），勿再使用 3.9，以免依赖解析或运行与声明不一致。
+
 ---
 
 ## 🔐 6. 安全与运维建议
